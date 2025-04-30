@@ -1,39 +1,79 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ScrollView, Linking } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ScrollView, Linking, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSelector } from 'react-redux';
+import firebase from '@react-native-firebase/app';
+import firestore from '@react-native-firebase/firestore';
 
 const ResidentDashboard = ({ navigation }) => {
   const userData = useSelector((state) => state?.user?.userData);
   const communityData = useSelector((state) => state?.user?.communityData);
 
-  // Emergency contacts data
-  const emergencyContacts = [
-    { id: '1', name: 'Security', number: '080-12345678', icon: 'shield-home' },
-    { id: '2', name: 'Admin Office', number: '080-87654321', icon: 'office-building' },
-    { id: '3', name: 'Lift Emergency', number: '1800-123-456', icon: 'elevator' },
-    { id: '4', name: 'Electrician', number: '080-11223344', icon: 'flash' },
-    { id: '5', name: 'Plumber', number: '080-55667788', icon: 'pipe' },
-  ];
+  // State for storing fetched data
+  const [emergencyContacts, setEmergencyContacts] = useState([]);
+  const [homeStoreCategories, setHomeStoreCategories] = useState([]);
+  const [bookingsCategories, setBookingsCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Home store categories
-  const homeStoreCategories = [
-    { id: '1', name: 'Painting', icon: 'brush' },
-    { id: '2', name: 'Plumbing', icon: 'pipe' },
-    { id: '3', name: 'Pest Control', icon: 'bug' },
-    { id: '4', name: 'Service Repair', icon: 'tools' },
-    { id: '5', name: 'Packers & Movers', icon: 'truck-delivery' },
-    { id: '6', name: 'Healthcare', icon: 'medical-bag' },
-    { id: '7', name: 'Automobile', icon: 'car' },
-    { id: '8', name: 'Vegtables', icon: 'sprout' },
-  ];
 
-  const BookingsCategories = [
-    { id: '1', name: 'Hall', icon: 'home-city-outline' },
-    { id: '2', name: 'Gym', icon: 'weight-lifter' },
-    { id: '3', name: 'Badminton Court', icon: 'badminton' },
-  ];
+  useEffect(() => {
+    const fetchCommunityData = async () => {
+      if (!communityData?.id) return;
+      
+      try {
+        const communityRef = firestore()
+          .collection('communities')
+          .doc(communityData.id);
 
+        // Fetch all data in parallel
+        const [emergencySnap, homeStoreSnap, bookingsSnap] = await Promise.all([
+          communityRef.collection('emergencyContacts').get(),
+          communityRef.collection('homeStoreCategories').get(),
+          communityRef.collection('bookingsCategories').get()
+        ]);
+
+        // Process emergency contacts
+        const contacts = emergencySnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setEmergencyContacts(contacts);
+
+        // Process home store categories
+        const homeCategories = homeStoreSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setHomeStoreCategories(homeCategories);
+
+        // Process bookings categories
+        const bookings = bookingsSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setBookingsCategories(bookings);
+
+      } catch (error) {
+        console.error('Error fetching community data:', error);
+        // Optionally set default data if fetch fails
+        setEmergencyContacts([]);
+        setHomeStoreCategories([]);
+        setBookingsCategories([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCommunityData();
+  }, [communityData?.id]);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#366732" />
+      </View>
+    );
+  }
   const renderHomeServiceCard = ({ item }) => (
     <TouchableOpacity style={styles.serviceCard}>
       <View style={styles.homeServiceIconContainer}>
@@ -171,7 +211,7 @@ const ResidentDashboard = ({ navigation }) => {
           </TouchableOpacity>
         </View>
         <FlatList
-          data={BookingsCategories}
+          data={bookingsCategories}
           renderItem={renderBookingsServiceCards}
           keyExtractor={item => item.id}
           numColumns={4}
@@ -181,6 +221,7 @@ const ResidentDashboard = ({ navigation }) => {
         />
       </View>
     </ScrollView>
+
   );
 };
 
@@ -358,6 +399,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#555',
     textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F9F9F9',
   },
 });
 

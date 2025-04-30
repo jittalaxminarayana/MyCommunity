@@ -20,6 +20,7 @@ import storage from '@react-native-firebase/storage';
 import { firebase } from '@react-native-firebase/firestore';
 import { updateUserProfileUrl, logout } from '../../../store/Slices/userSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import firestore from '@react-native-firebase/firestore';
 
 const ProfileScreen = () => {
   const userData = useSelector((state) => state?.user?.userData);
@@ -183,24 +184,45 @@ const ProfileScreen = () => {
     }
   };
 
-  const addFamilyMember = () => {
+  const addFamilyMember = async () => {
     if (!newMemberName.trim()) {
       Alert.alert('Error', 'Name cannot be empty');
       return;
     }
-    
-    const newMember = {
-      id: Date.now().toString(),
-      name: newMemberName,
-      relation: newMemberRelation,
-      phone: newMemberPhone
-    };
-    
-    setFamilyMembers([...familyMembers, newMember]);
-    setNewMemberName('');
-    setNewMemberRelation('');
-    setNewMemberPhone('');
-    setShowAddMemberModal(false);
+  
+    try {
+      const newMember = {
+        id: Date.now().toString(),
+        name: newMemberName,
+        relation: newMemberRelation,
+        phone: newMemberPhone
+      };
+  
+      // Reference to the user document in the community
+      const userRef = firestore()
+        .collection('communities')
+        .doc(communityData.id)
+        .collection('users')
+        .doc(userData.id);
+  
+      // Add the new family member to the familyMembers array
+      await userRef.update({
+        familyMembers: firestore.FieldValue.arrayUnion(newMember)
+      });
+  
+      // Update local state
+      setFamilyMembers([...familyMembers, newMember]);
+      setNewMemberName('');
+      setNewMemberRelation('');
+      setNewMemberPhone('');
+      setShowAddMemberModal(false);
+  
+      Alert.alert('Success', 'Family member added successfully');
+      
+    } catch (error) {
+      console.error('Error adding family member:', error);
+      Alert.alert('Error', 'Failed to add family member');
+    }
   };
 
   const removeFamilyMember = (id) => {
@@ -221,24 +243,45 @@ const ProfileScreen = () => {
     );
   };
 
-  const addStaffMember = () => {
+  const addStaffMember = async () => {
     if (!newStaffName.trim()) {
       Alert.alert('Error', 'Name cannot be empty');
       return;
     }
-    
-    const newStaff = {
-      id: Date.now().toString(),
-      name: newStaffName,
-      role: newStaffRole,
-      phone: newStaffPhone
-    };
-    
-    setStaffMembers([...staffMembers, newStaff]);
-    setNewStaffName('');
-    setNewStaffRole('');
-    setNewStaffPhone('');
-    setShowAddStaffModal(false);
+  
+    try {
+      const newStaff = {
+        id: Date.now().toString(),
+        name: newStaffName,
+        role: newStaffRole,
+        phone: newStaffPhone
+      };
+  
+      // Reference to the user document in the community
+      const userRef = firestore()
+        .collection('communities')
+        .doc(communityData.id)
+        .collection('users')
+        .doc(userData.id);
+  
+      // Add the new staff member to the familyMembers array
+      await userRef.update({
+        staffMembers: firestore.FieldValue.arrayUnion(newStaff)
+      });
+  
+      // Update local state
+      setStaffMembers([...staffMembers, newStaff]);
+      setNewStaffName('');
+      setNewStaffRole('');
+      setNewStaffPhone('');
+      setShowAddStaffModal(false);
+  
+      Alert.alert('Success', 'Family member added successfully');
+      
+    } catch (error) {
+      console.error('Error adding family member:', error);
+      Alert.alert('Error', 'Failed to add family member');
+    }
   };
 
   const removeStaffMember = (id) => {
@@ -259,24 +302,45 @@ const ProfileScreen = () => {
     );
   };
 
-  const addVehicle = () => {
+  const addVehicle = async () => {
     if (!newVehicleNumber.trim()) {
       Alert.alert('Error', 'Vehicle number cannot be empty');
       return;
     }
-    
-    const newVehicle = {
-      id: Date.now().toString(),
-      type: newVehicleType,
-      number: newVehicleNumber,
-      model: newVehicleModel
-    };
-    
-    setVehicles([...vehicles, newVehicle]);
-    setNewVehicleType('');
-    setNewVehicleNumber('');
-    setNewVehicleModel('');
-    setShowAddVehicleModal(false);
+  
+    try {
+      const newVehicle = {
+        id: Date.now().toString(),
+        type: newVehicleType,
+        number: newVehicleNumber,
+        model: newVehicleModel
+      };
+  
+      // Reference to the user document in the community
+      const userRef = firestore()
+        .collection('communities')
+        .doc(communityData.id)
+        .collection('users')
+        .doc(userData.id);
+  
+      // Add the new vehicle to the vehicles array
+      await userRef.update({
+        vehicles: firestore.FieldValue.arrayUnion(newVehicle)
+      });
+  
+      // Update local state
+      setVehicles([...vehicles, newVehicle]);
+      setNewVehicleType('');
+      setNewVehicleNumber('');
+      setNewVehicleModel('');
+      setShowAddVehicleModal(false);
+  
+      Alert.alert('Success', 'Vehicle added successfully');
+      
+    } catch (error) {
+      console.error('Error adding vehicle:', error);
+      Alert.alert('Error', 'Failed to add vehicle');
+    }
   };
 
   const removeVehicle = (id) => {
