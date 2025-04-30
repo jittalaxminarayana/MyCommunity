@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "275984481430",
+    "project_id": "mycommuty-98b42",
+    "storage_bucket": "mycommuty-98b42.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:275984481430:android:dd88644b8136b560a7d6b7",
+        "android_client_info": {
+          "package_name": "com.mycommunity"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRnZKzWS00VVapRIJLoxxVsmzWk_Ltr4A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
