@@ -12,6 +12,7 @@ import {
   Alert,
   ToastAndroid,
   Platform,
+  SafeAreaView,
 } from 'react-native';
 import { request, check, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { firebase } from '@react-native-firebase/firestore';
@@ -38,7 +39,7 @@ const Timeline = () => {
   const navigation = useNavigation();
   const userData = useSelector((state) => state?.user?.userData);
   const communityData = useSelector((state) => state?.user?.communityData);
-  console.log("communityData:", communityData.id)
+  console.log("communityData:", communityData.name)
 
   // Fetch posts from Firebase
   useEffect(() => {
@@ -406,7 +407,8 @@ const Timeline = () => {
       
       if (selectedImages.length > 0) {
         for (const image of selectedImages) {
-          const imageRef = storage().ref(`communities/${communityData?.id}/timeline/${Date.now()}-${image.name}`);
+          const cleanName = communityData?.name.replace(/\s+/g, '-').toLowerCase();
+          const imageRef = storage().ref(`communities/${communityData?.id}-${cleanName}/timeline/${Date.now()}-${image.name}`);
           await imageRef.putFile(image.uri);
           const url = await imageRef.getDownloadURL();
           attachmentUrls.push(url);
@@ -448,7 +450,7 @@ const Timeline = () => {
     <View style={styles.postCard}>
       <View style={styles.postHeader}>
         <Image 
-          source={item.user?.profileImageUrl ? { uri: item.user.profileImageUrl } : require('../../../assets/community.png')} 
+          source={item.user?.profileImageUrl ? { uri: item.user.profileImageUrl } : require('../../../../assets/community.png')} 
           style={styles.userAvatar} 
         />
         <View style={styles.headerTextContainer}>
@@ -539,7 +541,7 @@ const Timeline = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Community Feed</Text>
@@ -682,7 +684,7 @@ const Timeline = () => {
           }
         }}
       />
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -694,18 +696,19 @@ const styles = StyleSheet.create({
   header: {
     flexDirection:'row',
     backgroundColor: '#366732',
-    paddingVertical: 14,
-    borderBottomLeftRadius: 15,
-    borderBottomRightRadius: 15,
+    paddingVertical: 15,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
     elevation: 3,
     justifyContent:'space-evenly',
+    paddingTop:30
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
     textAlign: 'center',
-    marginLeft:27,
+    marginLeft:70,
     marginTop:5
   },
   createPostButton: {
@@ -921,6 +924,7 @@ const styles = StyleSheet.create({
   chatButtion: {
     flexDirection: 'column',
     alignItems: 'center',
+    marginLeft:30
   },
   attachButtonText: {
     marginLeft: 8,

@@ -26,7 +26,6 @@ import { useNavigation } from '@react-navigation/native';
 const { width } = Dimensions.get('window');
 
 const ChatList = () => {
-
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -36,19 +35,31 @@ const ChatList = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const [selectedViewImage, setSelectedViewImage] = useState(null);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  
   const userData = useSelector((state) => state?.user?.userData);
   const communityData = useSelector((state) => state?.user?.communityData);
-
-  console.log("userData from redux:", userData,communityData?.id);
-  console.log("members", members);
-  console.log("messages", messages);
-
   
   const flatListRef = useRef(null);
   const inputRef = useRef(null);
   const navigation = useNavigation();
 
-  // Fetch community members for showing names and profile pics
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      if (Platform.OS === 'android') setKeyboardOffset(0); // Adjust offset when keyboard is open
+    });
+
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      if (Platform.OS === 'android') setKeyboardOffset(-50); // Reset offset when keyboard is closed
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  // Fetch community members
   useEffect(() => {
     const fetchMembers = async () => {
       try {
@@ -69,14 +80,18 @@ const ChatList = () => {
       }
     };
     
-    fetchMembers();
+    if (communityData?.id) {
+      fetchMembers();
+    }
   }, [communityData?.id]);
 
   // Fetch messages from Firebase
   useEffect(() => {
+    if (!communityData?.id) return;
+
     const unsubscribe = firebase.firestore()
       .collection('communities')
-      .doc(communityData?.id)
+      .doc(communityData.id)
       .collection('chats')
       .orderBy('timestamp', 'desc')
       .limit(50)
@@ -96,8 +111,7 @@ const ChatList = () => {
     return () => unsubscribe();
   }, [communityData?.id]);
 
-
-  // Scroll to bottom when new messages come in
+  // Scroll to bottom when messages change
   useEffect(() => {
     if (messages.length > 0 && flatListRef.current) {
       setTimeout(() => {
@@ -115,14 +129,13 @@ const ChatList = () => {
     try {
       let imageUrl = null;
       
-      // Upload image if selected
       if (selectedImage) {
-        const imageRef = storage().ref(`communities/${communityData?.id}/chats/${Date.now()}-${selectedImage.name}`);
+        const cleanName = communityData?.name.replace(/\s+/g, '-').toLowerCase();
+        const imageRef = storage().ref(`communities/${communityData?.id}-${cleanName}/chats/${Date.now()}-${selectedImage.name}`);
         await imageRef.putFile(selectedImage.uri);
         imageUrl = await imageRef.getDownloadURL();
       }
       
-      // Add message to Firestore
       await firebase.firestore()
         .collection('communities')
         .doc(communityData?.id)
@@ -135,7 +148,6 @@ const ChatList = () => {
           read: [userData.id]
         });
       
-      // Clear input and selected image
       setMessageText('');
       setSelectedImage(null);
       setImagePreview(null);
@@ -143,12 +155,15 @@ const ChatList = () => {
       console.error('Error sending message:', error);
     } finally {
       setUploading(false);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 200);
     }
   };
 
   const handlePickImage = () => {
     const options = {
-      selectionLimit: 1, // for single image
+      selectionLimit: 1,
       mediaType: 'photo',
       maxWidth: 1200,
       maxHeight: 1200,
@@ -183,17 +198,10 @@ const ChatList = () => {
   };
 
   const getMessageDateDisplay = (message, index) => {
-    if (index === 0) {
-      return true;
-    }
-    
-    if (!message.timestamp || !messages[index - 1].timestamp) {
-      return false;
-    }
-    
+    if (index === 0) return true;
+    if (!message.timestamp || !messages[index - 1].timestamp) return false;
     const currentDate = message.timestamp.toDate().toDateString();
     const prevDate = messages[index - 1].timestamp.toDate().toDateString();
-    
     return currentDate !== prevDate;
   };
 
@@ -229,7 +237,7 @@ const ChatList = () => {
               <Text style={styles.senderName}>{sender.name || 'Unknown User'}</Text>
             )}
             
-            {item.text && item.text.length > 0 && (
+            {item.text && (
               <Text style={styles.messageText}>{item.text}</Text>
             )}
             
@@ -265,64 +273,68 @@ const ChatList = () => {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#366732" />
-        <Text style={styles.loadingText}>Loading messages...</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#366732" />
+          <Text style={styles.loadingText}>Loading messages...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  const navigateToChat = () => {
-    navigation.goBack();
-  };
-
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="arrow-left" size={25} color="#fff" />
-        </TouchableOpacity>
-
-        <View style={styles.titleContainer}>
-          <Text style={styles.headerTitle}>Community Chat</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : keyboardOffset}
+      style={styles.keyboardContainer}
+    >
+      <SafeAreaView style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Icon name="arrow-left" size={25} color="#fff" />
+          </TouchableOpacity>
+  
+          <View style={styles.titleContainer}>
+            <Text style={styles.headerTitle}>Community Chat</Text>
+          </View>
+  
+          <View style={styles.onlineIndicator}>
+            <Text style={styles.memberCountText}>
+              {Object.keys(members).length} Members
+            </Text>
+          </View>
         </View>
-
-        <View style={styles.onlineIndicator}>
-          <Text style={styles.memberCountText}>
-            {Object.keys(members).length} Members
-          </Text>
+        
+        {/* Messages List */}
+        <View style={styles.messagesContainer}>
+          {messages.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Icon name="chat-outline" size={80} color="#366732" />
+              <Text style={styles.emptyText}>No messages yet</Text>
+              <Text style={styles.emptySubtext}>Start a conversation!</Text>
+            </View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              renderItem={renderMessageItem}
+              keyExtractor={item => item.id}
+              contentContainerStyle={styles.messagesList}
+              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+              onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+              removeClippedSubviews={false}
+              keyboardDismissMode="on-drag"
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            />
+          )}
         </View>
-      </View>
-      
-      {/* Messages List */}
-      {messages.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Icon name="chat-outline" size={80} color="#366732" />
-          <Text style={styles.emptyText}>No messages yet</Text>
-          <Text style={styles.emptySubtext}>Start a conversation!</Text>
-        </View>
-      ) : (
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessageItem}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.messagesList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          removeClippedSubviews={false}
-        />
-      )}
-      
-      {/* Image Preview */}
-      {renderImagePreview()}
-      
-      {/* Message Input */}
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === "ios" ? "padding" : null}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-      >
+        
+        {/* Image Preview */}
+        {renderImagePreview()}
+        
+        {/* Input Area */}
         <View style={styles.inputContainer}>
           <TouchableOpacity style={styles.attachButton} onPress={handlePickImage}>
             <Icon name="image-plus" size={26} color="#366732" />
@@ -353,8 +365,7 @@ const ChatList = () => {
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
-      
+        </SafeAreaView>
       {/* Image Viewer Modal */}
       <Modal
         visible={imageViewerVisible}
@@ -378,7 +389,7 @@ const ChatList = () => {
           )}
         </View>
       </Modal>
-    </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -387,13 +398,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9F9F9',
   },
-  titleContainer: {
+  keyboardContainer: {
     flex: 1,
-    alignItems: 'center',
+    backgroundColor: '#F9F9F9',
   },
   header: {
     backgroundColor: '#366732',
-    paddingVertical: 15,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderBottomLeftRadius: 15,
     borderBottomRightRadius: 15,
@@ -401,6 +412,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'ios' ? 0 : 30
   },
   headerTitle: {
     fontSize: 22,
@@ -408,8 +420,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
   },
-  chatButtion: {
-    flexDirection: 'row',
+  titleContainer: {
+    flex: 1,
     alignItems: 'center',
   },
   onlineIndicator: {
@@ -421,10 +433,16 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 5,
-  },  
+  },
+  keyboardAvoidingContainer: {
+    flex: 1,
+  },
+  messagesContainer: {
+    flex: 1,
+  },
   messagesList: {
     padding: 12,
-    paddingBottom: 20,
+    paddingBottom: 80, // Increased for better spacing at bottom
   },
   dateHeaderContainer: {
     alignItems: 'center',
@@ -467,7 +485,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 4,
   },
   otherUserBubble: {
-    backgroundColor: 'f2f2f2',
+    backgroundColor: '#f2f2f2',
     borderBottomLeftRadius: 4,
   },
   senderName: {
@@ -483,7 +501,7 @@ const styles = StyleSheet.create({
   },
   messageImage: {
     width: width * 0.6,
-    height: width * 0.85,
+    height: width * 0.65,
     borderRadius: 4,
     marginVertical: 4,
   },
@@ -532,7 +550,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '##F9F9F9',
+    backgroundColor: '#F9F9F9',
   },
   loadingText: {
     marginTop: 10,

@@ -123,7 +123,7 @@ const NoticeBoard = ({navigation}) => {
             renderItem={({ item: attachment }) => (
               <View>
                 <Image
-                  source={attachment ? { uri: attachment } : require('../../../assets/community.png')}
+                  source={attachment ? { uri: attachment } : require('../../../../assets/community.png')}
                   style={styles.userAvatar}
                 />
               </View>
@@ -191,9 +191,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#366732',
     paddingVertical: 20,
     paddingHorizontal: 16,
-    borderBottomLeftRadius: 15,
-    borderBottomRightRadius: 15,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
     elevation: 3,
+    paddingTop:35
   },
   headerTitle: {
     fontSize: 24,

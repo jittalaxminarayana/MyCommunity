@@ -180,8 +180,8 @@ const Login = ({ route, navigation }) => {
       >
         <View style={styles.header}>
           <Icon name="arrow-left" size={24} color="#fff" onPress={() => navigation.goBack()} />
-          <Text style={styles.headerTitle}>{}</Text>
-          <View style={{ width: 24 }} /> {/* Empty view for layout balance */}
+          <Text style={styles.headerTitle}>Verify OTP</Text>
+          <View style={{ width: 24 }} />
         </View>
 
         <View style={styles.formContainer}>
@@ -285,12 +285,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
+    padding: 20,
+    paddingTop: 40,
+    backgroundColor: '#366732',
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
+    alignItems: 'center',
+    elevation: 3,
   },
   headerTitle: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
   },
   formContainer: {

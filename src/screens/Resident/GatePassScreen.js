@@ -278,7 +278,7 @@ const styles = StyleSheet.create({
     },
     header: {
         backgroundColor: '#366732',
-        paddingVertical: 20,
+        paddingVertical: 15,
         paddingHorizontal: 16,
         borderBottomLeftRadius: 15,
         borderBottomRightRadius: 15,
@@ -286,9 +286,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        paddingTop:30
       },
       headerTitle: {
-        fontSize: 24,
+        fontSize: 22,
         fontWeight: 'bold',
         color: '#fff',
         flex: 1,

@@ -35,6 +35,7 @@ const ProfileScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   
   // User data states
+  const [userId, setUserId] = useState(userData?.id || '');
   const [name, setName] = useState(userData?.name || '');
   const [email, setEmail] = useState(userData?.email || '');
   const [phone, setPhone] = useState(userData?.phoneNumber ? userData.phoneNumber.toString() : '');
@@ -61,6 +62,11 @@ const ProfileScreen = () => {
   const [newVehicleNumber, setNewVehicleNumber] = useState('');
   const [newVehicleModel, setNewVehicleModel] = useState('');
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
+  const [newParkingSlot, setNewParkingSlot] = useState('');
+
+  const [isModalVisible, setModalVisible] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   
   // Privacy settings
   const [privacySettings, setPrivacySettings] = useState({
@@ -91,6 +97,41 @@ const ProfileScreen = () => {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
+  const handleSubmit = async () => {
+    if (!email || !feedback) return;
+  
+    try {
+      setSubmitting(true);
+      await firestore()
+        .collection('communities')
+        .doc(communityData?.id)
+        .collection('feedback')
+        .add({
+          email,
+          feedback,
+          createdAt: new Date().toISOString(),
+          userId,
+          name,
+        });
+  
+      setModalVisible(false);
+      setEmail('');
+      setFeedback('');
+  
+      Alert.alert(
+        'Thank You!',
+        'Your feedback has been received successfully.',
+        [{ text: 'OK' }]
+      );
+    } catch (err) {
+      console.error('Error sending feedback:', err);
+      Alert.alert('Error', 'Something went wrong while sending your feedback.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  
+
   const handleSelectProfileImage = () => {
     const options = {
       mediaType: 'photo',
@@ -113,7 +154,8 @@ const ProfileScreen = () => {
           
           // Upload to Firebase storage if in edit mode
           if (isEditMode) {
-            const imageRef = storage().ref(`communities/${communityData?.id}/users/${userData.id}/profile`);
+            const cleanName = communityData?.name.replace(/\s+/g, '-').toLowerCase();
+            const imageRef = storage().ref(`communities/${communityData?.id}-${cleanName}/users/${userData.id}/profile`);
             await imageRef.putFile(source.uri);
             const downloadUrl = await imageRef.getDownloadURL();
             setProfileImage(downloadUrl);
@@ -197,6 +239,16 @@ const ProfileScreen = () => {
         relation: newMemberRelation,
         phone: newMemberPhone
       };
+
+      const updatedData = {
+        name,
+        email,
+        phoneNumber: phone ? parseInt(phone, 10) : null,
+        familyMembers,
+        staffMembers,
+        vehicles,
+        privacySettings
+      };
   
       // Reference to the user document in the community
       const userRef = firestore()
@@ -216,6 +268,12 @@ const ProfileScreen = () => {
       setNewMemberRelation('');
       setNewMemberPhone('');
       setShowAddMemberModal(false);
+
+      // Update Redux state
+      dispatch({
+        type: 'UPDATE_USER_PROFILE',
+        payload: updatedData
+      }); 
   
       Alert.alert('Success', 'Family member added successfully');
       
@@ -256,6 +314,16 @@ const ProfileScreen = () => {
         role: newStaffRole,
         phone: newStaffPhone
       };
+
+      const updatedData = {
+        name,
+        email,
+        phoneNumber: phone ? parseInt(phone, 10) : null,
+        familyMembers,
+        staffMembers,
+        vehicles,
+        privacySettings
+      };
   
       // Reference to the user document in the community
       const userRef = firestore()
@@ -275,6 +343,12 @@ const ProfileScreen = () => {
       setNewStaffRole('');
       setNewStaffPhone('');
       setShowAddStaffModal(false);
+
+      // Update Redux state
+      dispatch({
+        type: 'UPDATE_USER_PROFILE',
+        payload: updatedData
+      });  
   
       Alert.alert('Success', 'Family member added successfully');
       
@@ -313,7 +387,18 @@ const ProfileScreen = () => {
         id: Date.now().toString(),
         type: newVehicleType,
         number: newVehicleNumber,
-        model: newVehicleModel
+        model: newVehicleModel,
+        parkingSlot: newParkingSlot,
+      };
+
+      const updatedData = {
+        name,
+        email,
+        phoneNumber: phone ? parseInt(phone, 10) : null,
+        familyMembers,
+        staffMembers,
+        vehicles,
+        privacySettings
       };
   
       // Reference to the user document in the community
@@ -334,6 +419,12 @@ const ProfileScreen = () => {
       setNewVehicleNumber('');
       setNewVehicleModel('');
       setShowAddVehicleModal(false);
+
+      // Update Redux state
+      dispatch({
+        type: 'UPDATE_USER_PROFILE',
+        payload: updatedData
+      });  
   
       Alert.alert('Success', 'Vehicle added successfully');
       
@@ -400,10 +491,6 @@ const ProfileScreen = () => {
   const handleFeedback = () => {
     // Navigate to feedback screen or show feedback modal
     Alert.alert('Feedback', 'Feedback functionality will be implemented soon.');
-  };
-
-  const handleDataPrivacy = () => {
-    toggleSection('privacy');
   };
 
   // Family Member Modal
@@ -545,6 +632,13 @@ const ProfileScreen = () => {
             placeholder="Model (Optional)"
             value={newVehicleModel}
             onChangeText={setNewVehicleModel}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Parking Slot Number"
+            value={newParkingSlot}
+            onChangeText={setNewParkingSlot}
           />
           
           <View style={styles.modalButtons}>
@@ -792,7 +886,8 @@ const ProfileScreen = () => {
                 <View key={vehicle.id} style={styles.listItem}>
                   <View style={styles.listItemContent}>
                     <Text style={styles.listItemTitle}>{vehicle.number}</Text>
-                    <Text style={styles.listItemSubtitle}>{vehicle.type}{vehicle.model ? ` - ${vehicle.model}` : ''}</Text>
+                    <Text style={styles.listItemSubtitle}>{vehicle.type}{vehicle.model ? ` - ${vehicle?.model}` : ''}</Text>
+                    <Text style={styles.listItemSubtitle}>Parking Slot: {vehicle.model ? ` ${vehicle?.parkingSlot}` : ''}</Text>
                   </View>
                   {isEditMode && (
                     <TouchableOpacity
@@ -879,10 +974,48 @@ const ProfileScreen = () => {
             </View>
           </View>
         )}
+
+<Modal
+        animationType="slide"
+        transparent={true}
+        visible={isModalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.feedbackModalOverlay}>
+          <View style={styles.feedbackModalContainer}>
+            <Text style={styles.feedbackModalTitle}>Feedback</Text>
+
+            <TextInput
+              placeholder="Your Email"
+              value={email}
+              onChangeText={setEmail}
+              style={styles.feedbackInput}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <TextInput
+              placeholder="Your Feedback"
+              value={feedback}
+              onChangeText={setFeedback}
+              style={[styles.feedbackInput, styles.textArea]}
+              multiline
+              numberOfLines={5}
+            />
+
+            <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={submitting}>
+              <Text style={styles.submitButtonText}>{submitting ? 'Sending...' : 'Submit'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <Text style={styles.closeText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
         
         {/* Other Options */}
         <View style={styles.optionsContainer}>
-          <TouchableOpacity style={styles.optionButton} onPress={handleFeedback}>
+          <TouchableOpacity style={styles.optionButton} onPress={() => setModalVisible(true)}>
             <Icon name="message-text-outline" size={24} color="#366732" />
             <Text style={styles.optionText}>Send Feedback</Text>
           </TouchableOpacity>
@@ -909,18 +1042,20 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#366732',
     padding: 16,
-    paddingTop: Platform.OS === 'ios' ? 50 : 25,
+    paddingTop: Platform.OS === 'ios' ? 50 : 35,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
+    elevation:3
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom:5,
+    marginLeft:70,
     paddingHorizontal:50
   },
   editButton: {
@@ -981,7 +1116,7 @@ editImageOverlay: {
   top: 0,
   left: 0,
   right: 0,
-  bottom: 0,
+  bottom: 78,
   backgroundColor: 'rgba(0, 0, 0, 0.5)',
   borderRadius: 40,
   justifyContent: 'center',
@@ -1202,6 +1337,50 @@ saveButtonForItem: {
 cancelButtonText: {
   color: '#666',
   fontWeight: '500',
+},
+feedbackModalOverlay: {
+  flex: 1,
+  justifyContent: 'flex-end',
+  backgroundColor: 'rgba(0,0,0,0.5)',
+},
+feedbackModalContainer: {
+  backgroundColor: '#fff',
+  padding: 20,
+  borderTopRightRadius: 20,
+  borderTopLeftRadius: 20,
+},
+feedbackModalTitle: {
+  fontSize: 18,
+  fontWeight: '600',
+  marginBottom: 15,
+  marginLeft:'35%'
+},
+feedbackInput: {
+  borderWidth: 1,
+  borderColor: '#ccc',
+  padding: 10,
+  borderRadius: 8,
+  marginBottom: 15,
+},
+textArea: {
+  height: 100,
+  textAlignVertical: 'top',
+},
+submitButton: {
+  backgroundColor: '#366732',
+  padding: 12,
+  borderRadius: 8,
+  alignItems: 'center',
+},
+submitButtonText: {
+  color: '#fff',
+  fontSize: 16,
+},
+closeText: {
+  marginTop: 20,
+  textAlign: 'center',
+  color: '#666',
+  marginBottom:20
 },
 });
 

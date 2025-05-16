@@ -147,10 +147,10 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 40,
     backgroundColor: '#366732',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
     alignItems: 'center',
-    elevation: 5,
+    elevation: 3,
   },
   title: {
     fontSize: 28,

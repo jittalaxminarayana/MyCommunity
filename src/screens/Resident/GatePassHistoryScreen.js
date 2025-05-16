@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -8,7 +8,6 @@ import {
     FlatList,
     ActivityIndicator,
     Modal,
-    Share,
     Alert,
 } from 'react-native';
 import { firebase } from '@react-native-firebase/firestore';
@@ -16,11 +15,13 @@ import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import QRCode from 'react-native-qrcode-svg';
 import { format } from 'date-fns';
+import RNFS from 'react-native-fs';
+import Share from 'react-native-share'; 
 
 const GatePassHistoryScreen = ({ navigation }) => {
     const userData = useSelector((state) => state?.user?.userData);
     const communityData = useSelector((state) => state?.user?.communityData);
-    
+
 
     const [activeTab, setActiveTab] = useState('my-passes');
     const [myPasses, setMyPasses] = useState([]);
@@ -29,6 +30,7 @@ const GatePassHistoryScreen = ({ navigation }) => {
     const [loadingRequests, setLoadingRequests] = useState(true);
     const [modalVisible, setModalVisible] = useState(false);
     const [selectedPass, setSelectedPass] = useState(null);
+    const qrCodeRef = useRef();
 
     // Fetch user's passes
     useEffect(() => {
@@ -38,10 +40,10 @@ const GatePassHistoryScreen = ({ navigation }) => {
             setLoadingPasses(false);
             return;
         }
-    
+
         if (activeTab === 'my-passes') {
             console.log("Fetching passes for community:", communityData.id, "user:", userData.id);
-            
+
             const unsubscribe = firebase.firestore()
                 .collection('communities')
                 .doc(communityData.id)
@@ -67,7 +69,7 @@ const GatePassHistoryScreen = ({ navigation }) => {
                         setLoadingPasses(false);
                     }
                 );
-    
+
             return () => unsubscribe();
         }
     }, [userData, communityData, activeTab]);
@@ -153,31 +155,42 @@ const GatePassHistoryScreen = ({ navigation }) => {
 
     const handleSharePass = async (pass) => {
         try {
-            const message = `
-Gate Pass for ${communityData.name}
-------------------------------
-Visitor: ${pass.visitorName}
-PIN: ${pass.pin}
-Valid From: ${pass.validFromFormatted}
-Valid To: ${pass.validToFormatted}
-Purpose: ${pass.purpose}
-Apartment: ${pass.apartmentId}
-${pass.vehicleNumber ? `Vehicle: ${pass.vehicleNumber}` : ''}
-${pass.note ? `Note: ${pass.note}` : ''}
-
-Please show this pass and your ID at the gate for entry.
-      `;
-
-            await Share.share({
-                message: message,
-                title: `Gate Pass for ${pass.visitorName}`
-            });
+          const message = `
+      Gate Pass for ${communityData.name}
+      -----------------------------------
+      Visitor: ${pass.visitorName}
+      PIN: ${pass.pin}
+      Valid From: ${pass.validFromFormatted}
+      Valid To: ${pass.validToFormatted}
+      Purpose: ${pass.purpose}
+      Apartment: ${pass.apartmentId}
+      ${pass.vehicleNumber ? `Vehicle: ${pass.vehicleNumber}` : ''}
+      ${pass.note ? `Note: ${pass.note}` : ''}
+      
+      Please show this pass and your ID at the gate for entry.
+          `;
+      
+          // Convert QRCode to image
+          qrCodeRef.current?.toDataURL(async (data) => {
+            const path = `${RNFS.CachesDirectoryPath}/gate_pass_qr.png`;
+            await RNFS.writeFile(path, data, 'base64');
+      
+            const shareOptions = {
+              title: `Gate Pass for ${pass.visitorName}`,
+              message: message,
+              url: `file://${path}`,
+              type: 'image/png',
+            };
+      
+            await Share.open(shareOptions);
+          });
+      
         } catch (error) {
-            console.error('Error sharing pass:', error);
-            Alert.alert('Error', 'Failed to share gate pass.');
+          console.error('Error sharing pass:', error);
+          Alert.alert('Error', 'Failed to share gate pass.');
         }
-    };
-
+      };
+      
     const getPurposeIcon = (purpose) => {
         switch (purpose) {
             case 'guest':
@@ -231,6 +244,7 @@ Please show this pass and your ID at the gate for entry.
             </View>
 
             <View style={styles.passDetails}>
+
                 <View style={styles.detailRow}>
                     <Icon name="clock-outline" size={16} color="#366732" />
                     <Text style={styles.detailText}>
@@ -238,6 +252,16 @@ Please show this pass and your ID at the gate for entry.
                         {pass.validFromFormatted} - {pass.validToFormatted}
                     </Text>
                 </View>
+
+                {pass.pin && (
+                    <View style={styles.detailRow}>
+                        <Icon name="information-outline" size={16} color="#366732" />
+                        <Text style={styles.detailText}>
+                            <Text style={styles.detailLabel}>Pin: </Text>
+                            {pass.pin}
+                        </Text>
+                    </View>
+                )}
 
                 {pass.purpose && (
                     <View style={styles.detailRow}>
@@ -248,7 +272,7 @@ Please show this pass and your ID at the gate for entry.
                         </Text>
                     </View>
                 )}
-
+            
                 {pass.vehicleNumber && (
                     <View style={styles.detailRow}>
                         <Icon name="car" size={16} color="#366732" />
@@ -260,7 +284,25 @@ Please show this pass and your ID at the gate for entry.
                 )}
             </View>
 
-            <View style={styles.passActions}>
+        
+            {/* <View style={styles.passActions}>
+            <View style={{ height: 0, width: 0, overflow: 'hidden' }}>
+                    <QRCode
+                        value={JSON.stringify({
+                            passId: pass.id,
+                            communityId: communityData.id,
+                            visitorName: pass.visitorName,
+                            pin: pass.pin
+                        })}
+                        size={200}
+                        color="#366732"
+                        getRef={(ref) => {
+                            // Store the QR code reference for this specific pass
+                            pass.qrRef = ref;
+                        }}
+                    />
+                </View>
+
                 <TouchableOpacity
                     style={styles.actionButton}
                     onPress={() => handleSharePass(pass)}
@@ -268,7 +310,7 @@ Please show this pass and your ID at the gate for entry.
                     <Icon name="share-variant" size={20} color="#366732" />
                     <Text style={styles.actionText}>Share</Text>
                 </TouchableOpacity>
-            </View>
+            </View> */}
         </TouchableOpacity>
     );
 
@@ -385,6 +427,7 @@ Please show this pass and your ID at the gate for entry.
                                     })}
                                     size={200}
                                     color="#366732"
+                                    getRef={qrCodeRef}
                                 />
                             </View>
 
@@ -559,7 +602,7 @@ const styles = StyleSheet.create({
     },
     header: {
         backgroundColor: '#366732',
-        paddingVertical: 20,
+        paddingVertical: 15,
         paddingHorizontal: 16,
         borderBottomLeftRadius: 15,
         borderBottomRightRadius: 15,
@@ -567,9 +610,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        paddingTop:30
     },
     headerTitle: {
-        fontSize: 24,
+        fontSize: 22,
         fontWeight: 'bold',
         color: '#fff',
         flex: 1,
@@ -584,11 +628,12 @@ const styles = StyleSheet.create({
     tabContainer: {
         flexDirection: 'row',
         marginHorizontal: 16,
-        marginTop: 16,
+        marginTop: 10,
         backgroundColor: '#fff',
         borderRadius: 10,
         overflow: 'hidden',
         elevation: 2,
+        marginBottom:10
     },
     tabButton: {
         flex: 1,
@@ -772,8 +817,8 @@ const styles = StyleSheet.create({
     modalContent: {
         backgroundColor: '#fff',
         borderRadius: 10,
-        width: '90%',
-        maxHeight: '80%',
+        width: '95%',
+        maxHeight: '100%',
         overflow: 'hidden',
     },
     modalHeader: {
@@ -794,11 +839,11 @@ const styles = StyleSheet.create({
     },
     qrContainer: {
         alignItems: 'center',
-        marginVertical: 16,
+        marginVertical: 10,
     },
     pinContainer: {
         alignItems: 'center',
-        marginVertical: 16,
+        marginVertical: 5,
     },
     pinLabel: {
         fontSize: 14,
@@ -812,7 +857,7 @@ const styles = StyleSheet.create({
         marginTop: 4,
     },
     visitorDetails: {
-        marginTop: 16,
+        marginTop: 5,
         backgroundColor: '#f9f9f9',
         borderRadius: 8,
         padding: 16,
@@ -842,6 +887,7 @@ const styles = StyleSheet.create({
         marginTop: 24,
         flexDirection: 'row',
         justifyContent: 'center',
+        marginBottom:30
     },
     modalActionButton: {
         backgroundColor: '#366732',
