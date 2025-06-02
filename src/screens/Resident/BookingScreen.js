@@ -43,10 +43,10 @@ const BookingScreen = ({ route, navigation }) => {
 
   // Parse facility opening hours
   const parseOpeningHours = () => {
-    if (!facility?.facilities?.openingHours) return { openHour: 7, closeHour: 21 };
+    if (!facility?.openingHours) return { openHour: 7, closeHour: 21 };
     
     try {
-      const [openStr, closeStr] = facility.facilities.openingHours.split(' - ');
+      const [openStr, closeStr] = facility?.openingHours.split(' - ');
       const openHour = parseInt(openStr.split(':')[0]);
       const closeHour = parseInt(closeStr.split(':')[0]);
       return { openHour, closeHour };
@@ -166,7 +166,7 @@ const BookingScreen = ({ route, navigation }) => {
     }
 
     // Validate participants
-    const maxCapacity = parseInt(facility?.facilities?.capacity || '20');
+    const maxCapacity = parseInt(facility?.capacity || '20');
     if (participants < 1 || participants > maxCapacity) {
       Alert.alert('Error', `Number of participants must be between 1 and ${maxCapacity}`);
       return;
@@ -237,9 +237,9 @@ const BookingScreen = ({ route, navigation }) => {
         createdAt: firestore.FieldValue.serverTimestamp(),
         updatedAt: firestore.FieldValue.serverTimestamp(),
         notes: notes,
-        paymentStatus: facility.facilities?.fee === 'Free for residents' ? 'free' : 'pending',
-        paymentAmount: facility.facilities?.fee && facility.facilities.fee !== 'Free for residents' ? 
-          parseFloat(facility.facilities.fee.replace(/[^0-9.]/g, '')) : 0,
+        paymentStatus: facility?.fee === 'Free for residents' ? 'free' : 'pending',
+        paymentAmount: facility?.fee && facility?.fee !== 'Free for residents' ? 
+          parseFloat(facility?.fee.replace(/[^0-9.]/g, '')) : 0,
         recurring: recurringBooking
       };
 
@@ -542,14 +542,14 @@ const BookingScreen = ({ route, navigation }) => {
   );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <View style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Book {facility?.name}</Text>
       </View>
-
+      <ScrollView> 
       <View style={styles.facilityInfoCard}>
         <View style={styles.facilityIconContainer}>
           <Icon name={facility?.icon || 'calendar-blank'} size={32} color="#366732" />
@@ -557,13 +557,13 @@ const BookingScreen = ({ route, navigation }) => {
         <View style={styles.facilityDetails}>
           <Text style={styles.facilityName}>{facility?.name}</Text>
           <Text style={styles.facilityInfo}>
-            <Icon name="clock-outline" size={14} color="#666" /> {facility?.facilities?.openingHours || 'Not specified'}
+            <Icon name="clock-outline" size={14} color="#666" /> {facility?.openingHours || 'Not specified'}
           </Text>
           <Text style={styles.facilityInfo}>
-            <Icon name="account-group" size={14} color="#666" /> Capacity: {facility?.facilities?.capacity || 'Not specified'}
+            <Icon name="account-group" size={14} color="#666" /> Capacity: {facility?.capacity || 'Not specified'}
           </Text>
           <Text style={styles.facilityInfo}>
-            <Icon name="cash" size={14} color="#666" /> {facility?.facilities?.fee || 'Free for residents'}
+            <Icon name="cash" size={14} color="#666" /> {facility?.fee || 'Free for residents'}
           </Text>
         </View>
       </View>
@@ -647,7 +647,7 @@ const BookingScreen = ({ route, navigation }) => {
             <TouchableOpacity 
               style={styles.counterButton}
               onPress={() => {
-                const maxCapacity = parseInt(facility?.facilities?.capacity || '20');
+                const maxCapacity = parseInt(facility?.capacity || '20');
                 setParticipants(Math.min(maxCapacity, participants + 1));
               }}
             >
@@ -689,10 +689,10 @@ const BookingScreen = ({ route, navigation }) => {
         </TouchableOpacity>
 
         {/* Rules Section */}
-        {facility?.facilities?.rules && facility.facilities.rules.length > 0 && (
+        {facility?.rules && facility?.rules.length > 0 && (
           <View style={styles.rulesSection}>
             <Text style={styles.rulesTitle}>Facility Rules</Text>
-            {facility.facilities.rules.map((rule, index) => (
+            {facility?.rules.map((rule, index) => (
               <View key={index} style={styles.ruleItem}>
                 <Icon name="check-circle" size={18} color="#366732" style={styles.ruleIcon} />
                 <Text style={styles.ruleText}>{rule}</Text>
@@ -770,16 +770,17 @@ const BookingScreen = ({ route, navigation }) => {
           <ActivityIndicator size="small" color="#fff" />
         ) : (
           <Text style={styles.bookingButtonText}>
-            {facility.facilities?.fee === 'Free for residents' 
+            {facility?.fee === 'Free for residents' 
               ? 'Confirm Booking' 
-              : `Pay ${facility.facilities?.fee || '$0'} & Confirm`}
+              : `Pay ${facility?.fee || '$0'} & Confirm`}
           </Text>
         )}
       </TouchableOpacity>
 
       {/* Recurring Booking Modal */}
       {renderRecurringModal()}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 };
 
@@ -797,6 +798,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
+    paddingTop:30
   },
   backButton: {
     marginRight: 16,

@@ -1,6 +1,6 @@
 // AddHomeStoreServiceScreen.js
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import firestore from '@react-native-firebase/firestore';
@@ -11,7 +11,6 @@ const AddHomeStoreServiceScreen = () => {
   const communityData = useSelector((state) => state.user.communityData);
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('store');
-  const [order, setOrder] = useState('');
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -29,7 +28,6 @@ const AddHomeStoreServiceScreen = () => {
         .add({
           name,
           icon,
-          order: order ? parseInt(order) : 0,
           vendors: [],
           createdAt: firestore.FieldValue.serverTimestamp(),
           updatedAt: firestore.FieldValue.serverTimestamp(),
@@ -67,17 +65,6 @@ const AddHomeStoreServiceScreen = () => {
           placeholder="e.g. Plumbing, Electrical"
           value={name}
           onChangeText={setName}
-        />
-      </View>
-
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Display Order</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. 1, 2, 3"
-          keyboardType="numeric"
-          value={order}
-          onChangeText={setOrder}
         />
       </View>
 

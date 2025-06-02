@@ -26,59 +26,61 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     if (!communityData?.id) return;
-    
-    const fetchAdminData = async () => {
-      try {
-        const communityRef = firestore()
-          .collection('communities')
-          .doc(communityData.id);
-        
-        // Fetch emergency contacts
-        const emergencySnap = await communityRef.collection('emergencyContacts').get();
-        const contacts = emergencySnap.docs.map(doc => ({
+  
+    const communityRef = firestore().collection('communities').doc(communityData.id);
+  
+    const unsubscribeEmergency = communityRef
+      .collection('emergencyContacts')
+      .onSnapshot(snapshot => {
+        const contacts = snapshot.docs.map(doc => ({
           id2: doc.id,
           ...doc.data()
         }));
         setEmergencyContacts(contacts);
-        
-        // Fetch bookings categories
-        const bookingsSnap = await communityRef.collection('bookingsCategories').get();
-        const bookings = bookingsSnap.docs.map(doc => ({
+      });
+  
+    const unsubscribeBookings = communityRef
+      .collection('bookingsCategories')
+      .onSnapshot(snapshot => {
+        const bookings = snapshot.docs.map(doc => ({
           id2: doc.id,
           ...doc.data()
         }));
         setBookingsCategories(bookings);
-
-        // Fetch home store categories
-        const homeStoreSnap = await communityRef.collection('homeStoreCategories').get();
-        const homeCategories = homeStoreSnap.docs.map(doc => ({
+      });
+  
+    const unsubscribeHomeStore = communityRef
+      .collection('homeStoreCategories')
+      .onSnapshot(snapshot => {
+        const homeCategories = snapshot.docs.map(doc => ({
           id2: doc.id,
           ...doc.data()
         }));
         setHomeStoreCategories(homeCategories);
-
-        // Fetch maintenance data
-        const maintenanceDuesSnap = await communityRef.collection('maintenanceDues').get();
-        const maintenancePaymentsSnap = await communityRef.collection('payments').get();
-        
-        // Process maintenance data by block
+      });
+  
+    const unsubscribeMaintenanceDues = communityRef
+      .collection('maintenanceDues')
+      .onSnapshot(async maintenanceDuesSnap => {
+        const maintenancePaymentsSnap = await communityRef.collection('payments').get(); // still using get() if payments is not needed to be real-time
+  
         const blockData = {};
         let totalPending = 0;
         let totalCollected = 0;
-        
+  
         maintenanceDuesSnap.docs.forEach(doc => {
           const data = doc.data();
-          const blockId = data.apartmentId.split('-')[0]; // Extract block from apartment ID (e.g., "B-303" -> "B")
-          
+          const blockId = data.apartmentId.split('-')[0];
+  
           if (!blockData[blockId]) {
-            blockData[blockId] = { 
-              block: blockId, 
-              pending: 0, 
-              paid: 0, 
-              total: 0 
+            blockData[blockId] = {
+              block: blockId,
+              pending: 0,
+              paid: 0,
+              total: 0
             };
           }
-          
+  
           if (data.status === 'pending' || data.status === 'overdue') {
             blockData[blockId].pending++;
             totalPending += data.amount;
@@ -86,28 +88,30 @@ const AdminDashboard = () => {
             blockData[blockId].paid++;
             totalCollected += data.amount;
           }
-          
+  
           blockData[blockId].total++;
         });
-        
-        // Convert to array and sort by block
+  
         const blocks = Object.values(blockData).sort((a, b) => a.block.localeCompare(b.block));
         setMaintenanceData(blocks);
-        
+  
         setMaintenanceSummary({
           totalCollected,
           pendingPayments: totalPending
         });
-        
-      } catch (error) {
-        console.error('Error fetching admin data:', error);
-      } finally {
+  
         setLoading(false);
-      }
+      });
+  
+    return () => {
+      unsubscribeEmergency();
+      unsubscribeBookings();
+      unsubscribeHomeStore();
+      unsubscribeMaintenanceDues();
     };
-    
-    fetchAdminData();
+  
   }, [communityData?.id]);
+  
 
 
   useFocusEffect(
@@ -205,7 +209,7 @@ const AdminDashboard = () => {
       ) : emergencyContacts.length > 0 ? (
         <FlatList
           data={emergencyContacts}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.id2}
           renderItem={({ item }) => (
             <View style={styles.contactCard}>
               <View style={styles.contactIcon}>
@@ -261,7 +265,7 @@ const AdminDashboard = () => {
         <View style={styles.serviceGrid}>
           {homeStoreCategories.map((category) => (
             <TouchableOpacity 
-              key={category.id}
+              key={category.id2}
               style={styles.serviceCard}
               onPress={() => navigation.navigate('ServiceDetailsScreen', { serviceId: category.id2 })}
             >
@@ -302,7 +306,7 @@ const AdminDashboard = () => {
       ) : bookingsCategories.length > 0 ? (
         <FlatList
           data={bookingsCategories}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.id2}
           renderItem={({ item }) => (
             <TouchableOpacity 
               style={styles.bookingCard}
@@ -491,7 +495,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   navContainer: {
-    paddingVertical: 10,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
@@ -499,13 +502,15 @@ const styles = StyleSheet.create({
   },
   navItem: {
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignItems: 'center',
     marginHorizontal: 5,
   },
   activeNavItem: {
     borderBottomWidth: 2,
     borderBottomColor: '#366732',
+    backgroundColor:'#f5f5f5',
+    borderRadius:8,
   },
   navText: {
     fontSize: 14,

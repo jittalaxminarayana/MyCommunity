@@ -12,7 +12,8 @@ import {
   Modal,
   SafeAreaView,
   BackHandler,
-  Alert
+  Alert,
+  TouchableWithoutFeedback
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSelector } from 'react-redux';
@@ -38,55 +39,51 @@ const ResidentDashboard = ({ navigation }) => {
   const [showAllBookings, setShowAllBookings] = useState(false);
 
   useEffect(() => {
-    const fetchCommunityData = async () => {
-      if (!communityData?.id) return;
-      
-      try {
-        const communityRef = firestore()
-          .collection('communities')
-          .doc(communityData.id);
-
-        // Fetch all data in parallel
-        const [emergencySnap, homeStoreSnap, bookingsSnap] = await Promise.all([
-          communityRef.collection('emergencyContacts').get(),
-          communityRef.collection('homeStoreCategories').get(),
-          communityRef.collection('bookingsCategories').get()
-        ]);
-
-        // Process emergency contacts
-        const contacts = emergencySnap.docs.map(doc => ({
+    if (!communityData?.id) return;
+  
+    const communityRef = firestore().collection('communities').doc(communityData.id);
+  
+    // Set up snapshot listeners
+    const unsubscribeEmergency = communityRef
+      .collection('emergencyContacts')
+      .onSnapshot(snapshot => {
+        const contacts = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
         setEmergencyContacts(contacts);
-
-        // Process home store categories
-        const homeCategories = homeStoreSnap.docs.map(doc => ({
+      });
+  
+    const unsubscribeHomeStore = communityRef
+      .collection('homeStoreCategories')
+      .onSnapshot(snapshot => {
+        const homeCategories = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
         setHomeStoreCategories(homeCategories);
-
-        // Process bookings categories
-        const bookings = bookingsSnap.docs.map(doc => ({
+      });
+  
+    const unsubscribeBookings = communityRef
+      .collection('bookingsCategories')
+      .onSnapshot(snapshot => {
+        const bookings = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
         setBookingsCategories(bookings);
-
-      } catch (error) {
-        console.error('Error fetching community data:', error);
-        // Optionally set default data if fetch fails
-        setEmergencyContacts([]);
-        setHomeStoreCategories([]);
-        setBookingsCategories([]);
-      } finally {
-        setLoading(false);
-      }
+      });
+  
+    setLoading(false);
+  
+    // Cleanup listeners on unmount
+    return () => {
+      unsubscribeEmergency();
+      unsubscribeHomeStore();
+      unsubscribeBookings();
     };
-
-    fetchCommunityData();
   }, [communityData?.id]);
+  
 
   useFocusEffect(
     React.useCallback(() => {
@@ -130,7 +127,7 @@ const ResidentDashboard = ({ navigation }) => {
 
   // Open modal with service details
   const handleServicePress = (item, type) => {
-    console.log("item:", item)
+    console.log("item pressed:", item)
     setSelectedService({ ...item, type });
     setModalVisible(true);
   };
@@ -180,62 +177,177 @@ const ResidentDashboard = ({ navigation }) => {
       return (
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
-            <View style={styles.homeServiceIconContainer}>
-              <Icon name={selectedService.icon} size={36} color="#f68422" />
+            <View style={styles.homeServiceIconContainer2}>
+              <Icon name={selectedService.icon} size={26} color="#f68422" />
             </View>
             <Text style={styles.modalTitle}>{selectedService.name}</Text>
           </View>
           
           <Text style={styles.vendorTitle}>Available Vendors</Text>
           
-          {selectedService.vendors ? (
+          <ScrollView style={{marginBottom:40}} showsVerticalScrollIndicator={false}>
+          {selectedService.vendors && selectedService.vendors.length > 0 ? (
             selectedService.vendors.map((vendor, index) => (
               <View key={index} style={styles.vendorCard}>
-                <Text style={styles.vendorName}>{vendor.name}</Text>
-                <Text style={styles.vendorInfo}>{vendor.address}</Text>
+                <View style={styles.vendorHeader}>
+                  <Text style={styles.vendorName}>{vendor.name}</Text>
+                  {vendor.isVerified && (
+                    <Icon name="check-decagram" size={18} color="#4CAF50" style={{ marginLeft: 8 }} />
+                  )}
+                </View>
+
+                {/* Vendor Image Gallery */}
+                {vendor.images && vendor.images.length > 0 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
+                    {vendor.images.map((uri, i) => (
+                      <Image
+                        key={i}
+                        source={{ uri }}
+                        style={styles.vendorImage}
+                        resizeMode="cover"
+                      />
+                    ))}
+                  </ScrollView>
+                )}
+
+                <Text style={styles.vendorInfo}>
+                  <Icon name="map-marker" size={16} color="#777" /> {vendor.address}
+                </Text>
+
                 <View style={styles.vendorContact}>
-                  <Text style={styles.vendorPhone}>{vendor.phone}</Text>
-                  <TouchableOpacity 
-                    style={styles.callButton}
+                  <Icon name="phone" size={16} color="#777" />
+                  <Text style={styles.vendorPhone}> {vendor.phone}</Text>
+                  <TouchableOpacity
+                    style={styles.callButton2}
                     onPress={() => Linking.openURL(`tel:${vendor.phone}`)}
                   >
-                    <Icon name="phone" size={19} color="#fff" />
+                    <Icon name="phone" size={16} color="#fff" />
                   </TouchableOpacity>
                 </View>
+
+                <View style={styles.vendorRating}>
+                  <Icon name="star" size={16} color="#FFC107" />
+                  <Text style={styles.ratingText}>{vendor.rating || 'New'}</Text>
+                </View>
+
+                <Text style={styles.vendorServices}>
+                  <Icon name="tools" size={14} color="#777" /> {vendor.services?.join(', ')}
+                </Text>
+
+                <Text style={styles.vendorAvailability}>
+                  <Icon name="calendar" size={14} color="#777" /> {vendor.availability?.workingDays?.join(', ')} • {vendor.availability?.hours}
+                </Text>
+
+                <Text style={styles.vendorFee}>
+                  <Icon name="cash" size={14} color="#777" /> {vendor.feeStructure || 'Free'}
+                </Text>
               </View>
             ))
           ) : (
             <Text style={styles.noDataText}>No vendors available at the moment</Text>
           )}
+          </ScrollView>
         </View>
+        
       );
     } else if (selectedService.type === 'booking') {
       return (
         <View style={styles.modalContent}>
+          
           <View style={styles.modalHeader}>
-            <View style={styles.bookingsServiceIconContainer}>
-              <Icon name={selectedService.icon} size={36} color="#366732" />
+            <View style={styles.bookingsServiceIconContainer2}>
+              <Icon name={selectedService.icon} size={26} color="#366732" />
             </View>
             <Text style={styles.modalTitle}>{selectedService.name}</Text>
           </View>
           
           <Text style={styles.facilityTitle}>Facility Details</Text>
-          {selectedService.facilities ? (
+
+          {selectedService ? (
+            <ScrollView style={{marginBottom:40}} showsVerticalScrollIndicator={false}>
+            {/* Images Scroll */}
+            {selectedService.images?.length > 0 && (
+              <FlatList
+                data={selectedService?.images}
+                keyExtractor={(item, index) => index.toString()}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.imageScroll}
+                renderItem={({ item }) => (
+                  <Image
+                    source={{ uri: item }}
+                    style={styles.facilityImage}
+                    resizeMode="cover"
+                  />
+                )}
+              />
+            )}
+
+            {/* Facility Info */}
             <View style={styles.facilityDetails}>
+            
               <Text style={styles.facilityInfo}>
+                <Icon name="clock-outline" size={18} color="#555" />{' '}
                 <Text style={styles.infoLabel}>Opening Hours: </Text>
-                {selectedService.facilities.openingHours}
+                {selectedService.openingHours}
               </Text>
+      
               <Text style={styles.facilityInfo}>
+                <Icon name="account-group-outline" size={18} color="#555" />{' '}
                 <Text style={styles.infoLabel}>Capacity: </Text>
-                {selectedService.facilities.capacity}
+                {selectedService.capacity}
               </Text>
+      
               <Text style={styles.facilityInfo}>
+                <Icon name="cash" size={18} color="#555" />{' '}
                 <Text style={styles.infoLabel}>Fee: </Text>
-                {selectedService.facilities.fee || 'Free for residents'}
+                {selectedService.fee || 'Free for residents'}
               </Text>
-              
-              <TouchableOpacity 
+      
+              <Text style={styles.facilityInfo}>
+                <Icon name="calendar-clock" size={18} color="#555" />{' '}
+                <Text style={styles.infoLabel}>Booking Duration: </Text>
+                {selectedService.minBookingDuration}–{selectedService.maxBookingDuration} mins
+              </Text>
+      
+              <Text style={styles.facilityInfo}>
+                <Icon name="timer-sand" size={18} color="#555" />{' '}
+                <Text style={styles.infoLabel}>Advance Booking Limit: </Text>
+                {selectedService.advanceBookingLimit} days
+              </Text>
+      
+              <Text style={styles.facilityInfo}>
+                <Icon name="check-decagram" size={18} color="#555" />{' '}
+                <Text style={styles.infoLabel}>Staff Approval Required: </Text>
+                {selectedService.requiresStaffApproval ? 'Yes' : 'No'}
+              </Text>
+      
+              {selectedService.description && (
+                <Text style={styles.facilityInfo}>
+                  <Icon name="information-outline" size={18} color="#555" />{' '}
+                  <Text style={styles.infoLabel}>Description: </Text>
+                  {selectedService.description}
+                </Text>
+              )}
+      
+              {selectedService.rules?.length > 0 && (
+                <Text style={styles.facilityInfo}>
+                  <Icon name="clipboard-text-outline" size={18} color="#555" />{' '}
+                  <Text style={styles.infoLabel}>Rules: </Text>
+                  {selectedService.rules.join('\n')}
+                </Text>
+              )}
+      
+              {selectedService.equipment?.length > 0 && (
+                <Text style={styles.facilityInfo}>
+                  <Icon name="dumbbell" size={18} color="#555" />{' '}
+                  <Text style={styles.infoLabel}>Equipment: </Text>
+                  {selectedService.equipment.join(', ')}
+                </Text>
+              )}
+      
+              {/* Book Now Button */}
+              <TouchableOpacity
                 style={styles.bookNowButton}
                 onPress={() => {
                   setModalVisible(false);
@@ -245,6 +357,7 @@ const ResidentDashboard = ({ navigation }) => {
                 <Text style={styles.bookNowText}>Book Now</Text>
               </TouchableOpacity>
             </View>
+          </ScrollView>
           ) : (
             <Text style={styles.noDataText}>Facility details unavailable</Text>
           )}
@@ -407,17 +520,22 @@ const ResidentDashboard = ({ navigation }) => {
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalCard}>
-            <TouchableOpacity 
-              style={styles.closeButton} 
-              onPress={() => setModalVisible(false)}
-            >
-              <Icon name="close" size={24} color="#333" />
-            </TouchableOpacity>
-            {renderServiceDetails()}
+        <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
+          <View style={styles.modalContainer}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalCard}>
+                <View style={styles.dragIndicator} />
+                {/* <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Icon name="close" size={24} color="#333" />
+                </TouchableOpacity> */}
+                {renderServiceDetails()}
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </SafeAreaView>
+        </TouchableWithoutFeedback>
       </Modal>
     </>
   );
@@ -607,6 +725,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
+  homeServiceIconContainer2: {
+    width: 35,
+    height: 35,
+    borderRadius: 20,
+    backgroundColor: '#fff8e1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bookingsServiceIconContainer2: {
+    width: 35,
+    height: 35,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft:'2%'
+  },
   serviceName: {
     fontSize: 12,
     color: '#555',
@@ -629,12 +764,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
+    padding: 12,
+    maxHeight: '85%',
+  },
+  dragIndicator: {
+    alignSelf: 'center',
+    width: 50,
+    height: 4,
+    backgroundColor: '#ccc',
+    borderRadius: 3,
+    marginBottom: 10,
+    marginTop:-5
   },
   closeButton: {
     alignSelf: 'flex-end',
-    padding: 8,
+   paddingHorizontal:10
   },
   modalContent: {
     paddingBottom: 30,
@@ -642,85 +786,144 @@ const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
-    paddingBottom: 15,
+    marginBottom: 10,
+    paddingBottom: 5,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginLeft: 15,
+    marginLeft: 10,
   },
-  
-  // Vendor details styles
   vendorTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 15,
+    marginBottom: 5,
+    alignSelf:'center'
   },
   vendorCard: {
     backgroundColor: '#f9f9f9',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 12,
+    padding: 12,
+    marginVertical: 8,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  vendorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
   },
   vendorName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 5,
+    fontWeight: 'bold',
   },
   vendorInfo: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+    color: '#555',
+    marginVertical: 4,
   },
   vendorContact: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    marginBottom: 6,
   },
   vendorPhone: {
     fontSize: 14,
-    color: '#366732',
-    fontWeight: '500',
+    color: '#444',
+    marginLeft: 4,
+    flex: 1,
   },
-  
-  // Facility details styles
+  callButton2: {
+    backgroundColor: '#4CAF50',
+    padding: 6,
+    borderRadius: 6,
+    marginLeft: 10,
+  },
+  vendorRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  ratingText: {
+    marginLeft: 4,
+    fontSize: 14,
+    color: '#555',
+  },
+  vendorServices: {
+    fontSize: 14,
+    marginBottom: 4,
+    color: '#444',
+  },
+  vendorAvailability: {
+    fontSize: 13,
+    marginBottom: 4,
+    color: '#666',
+  },
+  vendorFee: {
+    fontSize: 13,
+    color: '#666',
+  },
+  vendorImage: {
+    width: 100,
+    height: 80,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  imageScroll: {
+    marginVertical: 10,
+    paddingHorizontal: 10,
+  },
+  facilityImage: {
+    width: 250,
+    height: 180,
+    borderRadius: 10,
+    marginRight: 10,
+  },
   facilityTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 15,
+    marginBottom:5,
+    alignSelf:'center'
   },
   facilityDetails: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 12,
-    padding: 15,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  facilityName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 15,
   },
   facilityInfo: {
-    fontSize: 15,
-    color: '#555',
+    fontSize: 14,
+    color: '#444',
     marginBottom: 10,
+    lineHeight: 22,
   },
   infoLabel: {
     fontWeight: '600',
-    color: '#333',
+    color: '#000',
   },
   bookNowButton: {
+    marginTop: 20,
     backgroundColor: '#366732',
-    borderRadius: 8,
     paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
-    marginTop: 15,
   },
   bookNowText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   noDataText: {
     fontSize: 15,
