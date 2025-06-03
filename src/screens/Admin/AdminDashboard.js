@@ -357,7 +357,7 @@ const AdminDashboard = () => {
           />
           <View style={styles.userTextContainer}>
             <Text style={styles.headerTitle}>{communityData?.name || 'Community'} Admin</Text>
-            <Text style={styles.headerSubtitle}>{userData?.name || userData?.displayName || 'Admin'}</Text>
+            <Text style={styles.headerSubtitle}>{userData?.name || 'Admin'}</Text>
           </View>
         </View>
 
@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: '#fff',
-    opacity: 0.9,
+    opacity: 1,
     marginTop: 2,
   },
   tabContainer: {

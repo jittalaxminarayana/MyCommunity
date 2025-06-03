@@ -19,9 +19,10 @@ import { format } from 'date-fns';
 
 const GatePassScreen = ({ navigation }) => {
     const userData = useSelector((state) => state.user.userData);
+    console.log("userData",userData)
     const communityData = useSelector((state) => state.user.communityData);
 
-    // Gate pass form data
+    // Form state
     const [visitorName, setVisitorName] = useState('');
     const [visitorPhone, setVisitorPhone] = useState('');
     const [purpose, setPurpose] = useState('guest');
@@ -29,6 +30,7 @@ const GatePassScreen = ({ navigation }) => {
     const [validTo, setValidTo] = useState(new Date(new Date().setDate(new Date().getDate() + 1)));
     const [vehicleNumber, setVehicleNumber] = useState('');
     const [note, setNote] = useState('');
+    const [durationType, setDurationType] = useState('hours'); // 'hours', 'days', 'custom'
 
     // UI states
     const [loading, setLoading] = useState(false);
@@ -40,8 +42,30 @@ const GatePassScreen = ({ navigation }) => {
         return Math.floor(100000 + Math.random() * 900000).toString();
     };
 
-    // Handle creating a new gate pass
-    const handleCreatePass = async () => {
+    // Handle duration type change
+    const handleDurationTypeChange = (type) => {
+        setDurationType(type);
+        const now = new Date();
+        setValidFrom(now);
+
+        switch (type) {
+            case 'hours':
+                setValidTo(new Date(now.getTime() + 2 * 60 * 60 * 1000)); // 2 hours
+                break;
+            case 'day':
+                setValidTo(new Date(now.getTime() + 24 * 60 * 60 * 1000)); // 1 day
+                break;
+            case 'days':
+                setValidTo(new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)); // 3 days
+                break;
+            case 'custom':
+                // Keep current dates
+                break;
+        }
+    };
+
+    // Handle creating a new gate pass request
+    const handleCreateRequest = async () => {
         // Validate form data
         if (!visitorName.trim() || !visitorPhone.trim()) {
             Alert.alert('Missing Information', 'Please enter visitor name and phone number.');
@@ -57,47 +81,53 @@ const GatePassScreen = ({ navigation }) => {
 
         try {
             // Generate a PIN for verification
-            const pin = generatePIN();
+            const pinCode = generatePIN();
 
-            // Create visitor record first
-            const visitorRef = await firebase.firestore()
-                .collection('communities')
-                .doc(communityData.id)
-                .collection('visitors')
-                .add({
-                    name: visitorName,
-                    phoneNumber: visitorPhone,
-                    hostUserId: userData.id,
-                    apartmentId: userData.apartmentId,
-                    purpose: purpose,
-                    status: 'expected',
-                    vehicleNumber: vehicleNumber || null,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-
-            // Create gate pass record
-            const passData = {
-                visitorId: visitorRef.id,
-                visitorName: visitorName,
-                visitorPhone: visitorPhone,
-                generatedBy: userData.id,
-                generatedByName: userData.name,
-                apartmentId: userData.apartmentId,
+            // Create gate pass request
+            const requestData = {
+                visitorName,
+                visitorPhone,
+                purpose,
                 validFrom: firebase.firestore.Timestamp.fromDate(validFrom),
                 validTo: firebase.firestore.Timestamp.fromDate(validTo),
-                purpose: purpose,
                 vehicleNumber: vehicleNumber || null,
-                note: note || null,
-                pin: pin,
-                status: 'active',
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                notes: note || null,
+                pinCode,
+                status: 'pending',
+                requestedByUserId: userData.id,
+                requestedByRole:userData.role,
+                requestedByName: userData.name,
+                apartmentId: userData.apartmentId,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                securityImages: [],
             };
 
             await firebase.firestore()
                 .collection('communities')
                 .doc(communityData.id)
+                .collection('gatePassRequests')
+                .add(requestData);
+
+
+            await firebase.firestore()
+                .collection('communities')
+                .doc(communityData.id)
                 .collection('gatePasses')
-                .add(passData);
+                .add({
+                    visitorName,
+                    visitorPhone,
+                    purpose,
+                    validFrom: firebase.firestore.Timestamp.fromDate(validFrom),
+                    validTo: firebase.firestore.Timestamp.fromDate(validTo),
+                    vehicleNumber: vehicleNumber || null,
+                    notes: note || null,
+                    pin: pinCode,
+                    status: 'active',
+                    requestedByUserId: userData.id,
+                    requestedByRole:userData.role,
+                    requestedByName: userData.name,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                });
 
             // Reset form
             setVisitorName('');
@@ -107,12 +137,13 @@ const GatePassScreen = ({ navigation }) => {
             setNote('');
             setValidFrom(new Date());
             setValidTo(new Date(new Date().setDate(new Date().getDate() + 1)));
+            setDurationType('hours');
 
-            Alert.alert('Success', 'Gate pass created successfully!');
-            navigation.navigate('GatePassHistoryScreen');
+            Alert.alert('Success', 'Gate pass request created successfully!');
+            navigation.goBack();
         } catch (error) {
-            console.error('Error creating gate pass:', error);
-            Alert.alert('Error', 'Failed to create gate pass. Please try again.');
+            console.error('Error creating gate pass request:', error);
+            Alert.alert('Error', 'Failed to create gate pass request. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -127,7 +158,7 @@ const GatePassScreen = ({ navigation }) => {
                 >
                     <Icon name="arrow-left" size={24} color="#fff" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Create Gate Pass</Text>
+                <Text style={styles.headerTitle}>Create Gate Pass Request</Text>
                 <View style={styles.headerRightSpace}></View>
             </View>
 
@@ -164,7 +195,6 @@ const GatePassScreen = ({ navigation }) => {
                             selectedValue={purpose}
                             onValueChange={(itemValue) => setPurpose(itemValue)}
                             style={styles.picker}
-                            placeholder='To whom you want gatepass'
                         >
                             <Picker.Item label="Guest" value="guest" />
                             <Picker.Item label="Delivery" value="delivery" />
@@ -177,53 +207,85 @@ const GatePassScreen = ({ navigation }) => {
 
                 <Text style={styles.formSectionTitle}>Validity Period</Text>
 
-                <View style={styles.inputContainer}>
-                    <Text style={styles.inputLabel}>Valid From</Text>
+                <View style={styles.durationOptions}>
                     <TouchableOpacity
-                        style={styles.dateInput}
-                        onPress={() => setShowFromDatePicker(true)}
+                        style={[styles.durationButton, durationType === 'hours' && styles.activeDuration]}
+                        onPress={() => handleDurationTypeChange('hours')}
                     >
-                        <Text>{format(validFrom, 'MMM dd, yyyy h:mm a')}</Text>
-                        <Icon name="calendar" size={20} color="#366732" />
+                        <Text style={[styles.durationText, durationType === 'hours' && styles.activeDurationText]}>2 Hours</Text>
                     </TouchableOpacity>
-                    {showFromDatePicker && (
-                        <DateTimePicker
-                            value={validFrom}
-                            mode="datetime"
-                            display="default"
-                            onChange={(event, selectedDate) => {
-                                setShowFromDatePicker(false);
-                                if (selectedDate) {
-                                    setValidFrom(selectedDate);
-                                }
-                            }}
-                        />
-                    )}
+                    <TouchableOpacity
+                        style={[styles.durationButton, durationType === 'day' && styles.activeDuration]}
+                        onPress={() => handleDurationTypeChange('day')}
+                    >
+                        <Text style={[styles.durationText, durationType === 'day' && styles.activeDurationText]}>1 Day</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.durationButton, durationType === 'days' && styles.activeDuration]}
+                        onPress={() => handleDurationTypeChange('days')}
+                    >
+                        <Text style={[styles.durationText, durationType === 'days' && styles.activeDurationText]}>3 Days</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.durationButton, durationType === 'custom' && styles.activeDuration]}
+                        onPress={() => handleDurationTypeChange('custom')}
+                    >
+                        <Text style={[styles.durationText, durationType === 'custom' && styles.activeDurationText]}>Custom</Text>
+                    </TouchableOpacity>
                 </View>
 
-                <View style={styles.inputContainer}>
-                    <Text style={styles.inputLabel}>Valid To</Text>
-                    <TouchableOpacity
-                        style={styles.dateInput}
-                        onPress={() => setShowToDatePicker(true)}
-                    >
-                        <Text>{format(validTo, 'MMM dd, yyyy h:mm a')}</Text>
-                        <Icon name="calendar" size={20} color="#366732" />
-                    </TouchableOpacity>
-                    {showToDatePicker && (
-                        <DateTimePicker
-                            value={validTo}
-                            mode="datetime"
-                            display="default"
-                            onChange={(event, selectedDate) => {
-                                setShowToDatePicker(false);
-                                if (selectedDate) {
-                                    setValidTo(selectedDate);
-                                }
-                            }}
-                        />
-                    )}
-                </View>
+                {durationType === 'custom' && (
+                    <>
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputLabel}>Valid From</Text>
+                            <TouchableOpacity
+                                style={styles.dateInput}
+                                onPress={() => setShowFromDatePicker(true)}
+                            >
+                                <Text>{format(validFrom, 'MMM dd, yyyy h:mm a')}</Text>
+                                <Icon name="calendar" size={20} color="#366732" />
+                            </TouchableOpacity>
+                            {showFromDatePicker && (
+                                <DateTimePicker
+                                    value={validFrom}
+                                    mode="datetime"
+                                    display="default"
+                                    onChange={(event, selectedDate) => {
+                                        setShowFromDatePicker(false);
+                                        if (selectedDate) {
+                                            setValidFrom(selectedDate);
+                                        }
+                                    }}
+                                />
+                            )}
+                        </View>
+
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputLabel}>Valid To</Text>
+                            <TouchableOpacity
+                                style={styles.dateInput}
+                                onPress={() => setShowToDatePicker(true)}
+                            >
+                                <Text>{format(validTo, 'MMM dd, yyyy h:mm a')}</Text>
+                                <Icon name="calendar" size={20} color="#366732" />
+                            </TouchableOpacity>
+                            {showToDatePicker && (
+                                <DateTimePicker
+                                    value={validTo}
+                                    mode="datetime"
+                                    display="default"
+                                    onChange={(event, selectedDate) => {
+                                        setShowToDatePicker(false);
+                                        if (selectedDate) {
+                                            setValidTo(selectedDate);
+                                        }
+                                    }}
+                                    minimumDate={validFrom}
+                                />
+                            )}
+                        </View>
+                    </>
+                )}
 
                 <Text style={styles.formSectionTitle}>Additional Information</Text>
 
@@ -254,15 +316,15 @@ const GatePassScreen = ({ navigation }) => {
 
                 <TouchableOpacity
                     style={styles.submitButton}
-                    onPress={handleCreatePass}
+                    onPress={handleCreateRequest}
                     disabled={loading}
                 >
                     {loading ? (
                         <ActivityIndicator color="#fff" size="small" />
                     ) : (
                         <>
-                            <Icon name="qrcode-plus" size={20} color="#fff" />
-                            <Text style={styles.submitButtonText}>Generate Pass</Text>
+                            <Icon name="send" size={20} color="#fff" />
+                            <Text style={styles.submitButtonText}>Submit Request</Text>
                         </>
                     )}
                 </TouchableOpacity>
@@ -286,21 +348,21 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingTop:30
-      },
-      headerTitle: {
+        paddingTop: 30
+    },
+    headerTitle: {
         fontSize: 22,
         fontWeight: 'bold',
         color: '#fff',
         flex: 1,
         textAlign: 'center',
-      },
-      backButton: {
+    },
+    backButton: {
         padding: 5,
-      },
-      headerRightSpace: {
+    },
+    headerRightSpace: {
         width: 24, // This creates balance with the back button on the left
-      },
+    },
     formContainer: {
         padding: 16,
     },
@@ -344,7 +406,7 @@ const styles = StyleSheet.create({
     },
     picker: {
         height: 50,
-        backgroundColor:'#e6e6e6',
+        backgroundColor: '#e6e6e6',
     },
     dateInput: {
         flexDirection: 'row',
@@ -372,6 +434,30 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 16,
         fontWeight: 'bold',
+    },
+    durationOptions: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 16,
+    },
+    durationButton: {
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        backgroundColor: '#fff',
+    },
+    activeDuration: {
+        backgroundColor: '#366732',
+        borderColor: '#366732',
+    },
+    durationText: {
+        fontSize: 14,
+        color: '#333',
+    },
+    activeDurationText: {
+        color: '#fff',
     },
 });
 

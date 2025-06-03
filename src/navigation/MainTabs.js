@@ -82,7 +82,7 @@ const MainTabs = ({ role, userData, communityData, navigation }) => {
             case 'Home':
               iconName = role === 'Admin'
                 ? 'view-dashboard-outline'
-                : role === 'security' || role === 'guard'
+                : role === 'Security'
                   ? 'shield-home'
                   : 'home-analytics';
               break;

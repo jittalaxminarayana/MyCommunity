@@ -27,6 +27,7 @@
     "react": "19.0.0",
     "react-native": "0.79.1",
     "react-native-actionsheet": "^2.4.2",
+    "react-native-camera-kit": "^15.0.1",
     "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "^2.25.0",
     "react-native-image-picker": "^8.2.0",

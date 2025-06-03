@@ -48,7 +48,7 @@ const GatePassHistoryScreen = ({ navigation }) => {
                 .collection('communities')
                 .doc(communityData.id)
                 .collection('gatePasses')
-                .where('generatedBy', '==', userData.id)
+                .where('requestedByUserId', '==', userData.id)
                 .orderBy('createdAt', 'desc')
                 .onSnapshot(
                     (snapshot) => {
@@ -81,7 +81,7 @@ const GatePassHistoryScreen = ({ navigation }) => {
                 .collection('communities')
                 .doc(communityData.id)
                 .collection('gatePassRequests')
-                .where('requestedForUserId', '==', userData.id)
+                .where('requestedByRole', '==', 'Security')
                 .where('status', '==', 'pending')
                 .orderBy('createdAt', 'desc')
                 .onSnapshot(snapshot => {
@@ -124,7 +124,7 @@ const GatePassHistoryScreen = ({ navigation }) => {
                 .add({
                     ...request,
                     pin: pin,
-                    status: 'active',
+                    status: 'used',
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     generatedBy: userData.id,
                     generatedByName: userData.name,
@@ -378,20 +378,21 @@ const GatePassHistoryScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.requestActions}>
-                <TouchableOpacity
-                    style={[styles.requestButton, styles.rejectButton]}
-                    onPress={() => handleRejectRequest(request.id)}
-                >
-                    <Icon name="close" size={20} color="#fff" />
-                    <Text style={styles.requestButtonText}>Reject</Text>
-                </TouchableOpacity>
-
+                
                 <TouchableOpacity
                     style={[styles.requestButton, styles.approveButton]}
                     onPress={() => handleApproveRequest(request.id)}
                 >
                     <Icon name="check" size={20} color="#fff" />
                     <Text style={styles.requestButtonText}>Approve</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.requestButton, styles.rejectButton]}
+                    onPress={() => handleRejectRequest(request.id)}
+                >
+                    <Icon name="close" size={20} color="#fff" />
+                    <Text style={styles.requestButtonText}>Reject</Text>
                 </TouchableOpacity>
             </View>
         </View>

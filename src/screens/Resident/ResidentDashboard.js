@@ -379,8 +379,8 @@ const ResidentDashboard = ({ navigation }) => {
               style={styles.userAvatar}
             />
             <View style={styles.userTextContainer}>
-              <Text style={styles.userName}>{communityData?.name || 'Our Community'}</Text>
-              <Text style={styles.welcomeText}>{userData?.displayName || 'Resident'}</Text>
+              <Text style={styles.userName}>{communityData?.name || 'Our Community'} Resident </Text>
+              <Text style={styles.welcomeText}>{userData?.name || 'Resident'}</Text>
             </View>
           </View>
 
@@ -585,9 +585,10 @@ const styles = StyleSheet.create({
     marginLeft: 15,
   },
   welcomeText: {
-    fontSize: 16,
+    ontSize: 14,
     color: '#fff',
-    opacity: 0.9,
+    opacity: 1,
+    marginTop: 2,
   },
   userName: {
     fontSize: 20,
@@ -757,7 +758,7 @@ const styles = StyleSheet.create({
   // Modal styles
   modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.2)',
     justifyContent: 'flex-end',
   },
   modalCard: {

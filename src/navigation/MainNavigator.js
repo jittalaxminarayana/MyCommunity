@@ -20,6 +20,11 @@ import { ServiceDetailsScreen } from '../screens/Admin/AddHomeStore/ServiceDetai
 import { AddVendorScreen } from '../screens/Admin/AddHomeStore/AddVendorScreen';
 import EditVendorScreen from '../screens/Admin/AddHomeStore/EditVendorScreen';
 
+import QRScannerScreen from '../screens/Security/GatePassManagement/QRScannerScreen';
+import NewGatePassRequestScreen from '../screens/Security/GatePassManagement/NewGatePassRequestScreen';
+import AllGatePassRequestsScreen from '../screens/Security/AllGatePassRequestsScreen';
+import VisitorsLogScreen from '../screens/Security/VisitorsLogScreen';
+
 const Stack = createStackNavigator();
 
 export default function MainNavigator({ role, userData, communityData }) {
@@ -50,6 +55,11 @@ export default function MainNavigator({ role, userData, communityData }) {
       <Stack.Screen name="ServiceDetailsScreen" component={ServiceDetailsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="AddVendorScreen" component={AddVendorScreen} options={{ headerShown: false }} />
       <Stack.Screen name="EditVendorScreen" component={EditVendorScreen} options={{ headerShown: false }} />
+
+      <Stack.Screen name="QRScannerScreen" component={QRScannerScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NewGatePassRequestScreen" component={NewGatePassRequestScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="AllGatePassRequestsScreen" component={AllGatePassRequestsScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="VisitorsLogScreen" component={VisitorsLogScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };
