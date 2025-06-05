@@ -54,10 +54,11 @@ const AddHomeStoreServiceScreen = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backIconButton}>
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Service</Text>
+        <Text style={styles.headerTitle}>Add Home Service</Text>
       </View>
 
     <ScrollView style={styles.container}>
+      
       <View style={styles.inputContainer}>
         <Text style={styles.label}>Service Name</Text>
         <TextInput

@@ -99,7 +99,8 @@ const EditVendorScreen = () => {
       setUploading(true);
       const imageUri = Platform.OS === 'ios' ? image.uri.replace('file://', '') : image.uri;
       const filename = imageUri.substring(imageUri.lastIndexOf('/') + 1);
-      const storageRef = storage().ref(`communities/${communityData.id}/vendors/${vendor.vendorId}/${filename}`);
+      const cleanName = communityData?.name.replace(/\s+/g, '-').toLowerCase();
+      const storageRef = storage().ref( `communities/${communityData.id}-${cleanName}/vendors/${vendor.vendorId}/${filename}`);
       
       const task = storageRef.putFile(imageUri);
       

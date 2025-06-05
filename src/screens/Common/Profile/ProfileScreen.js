@@ -1177,6 +1177,8 @@ sectionContent: {
   marginTop: 2,
   borderBottomLeftRadius: 12,
   borderBottomRightRadius: 12,
+  borderTopLeftRadius: 10,
+  borderTopRightRadius: 10,
   padding: 16,
   elevation: 2,
   shadowColor: '#000',

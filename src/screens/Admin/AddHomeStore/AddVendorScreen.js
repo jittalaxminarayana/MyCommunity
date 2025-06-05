@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Image
+  Image,
+  KeyboardAvoidingView
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -84,10 +85,11 @@ const AddVendorScreen = () => {
       const imageUri = Platform.OS === 'ios' ? image.uri.replace('file://', '') : image.uri;
       const filename = imageUri.substring(imageUri.lastIndexOf('/') + 1);
       const tempVendorId = `temp_${Date.now()}`;
-      const storageRef = storage().ref(`communities/${communityData.id}/vendors/${tempVendorId}/${filename}`);
-      
+      const cleanName = communityData?.name.replace(/\s+/g, '-').toLowerCase();
+      const storageRef = storage().ref( `communities/${communityData?.id}-${cleanName}/vendors/${tempVendorId}/${filename}`);
+
       const task = storageRef.putFile(imageUri);
-      
+
       task.on('state_changed', snapshot => {
         const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
         setUploadProgress(progress);
@@ -95,7 +97,7 @@ const AddVendorScreen = () => {
 
       await task;
       const downloadUrl = await storageRef.getDownloadURL();
-      
+
       setImages(prev => [...prev, downloadUrl]);
     } catch (error) {
       console.error('Error uploading image:', error);
@@ -170,46 +172,43 @@ const AddVendorScreen = () => {
   };
 
   const inputFields = [
-    { name: 'name', label: 'Vendor Name*', placeholder: 'e.g. Quick Fix Plumbing' },
-    { 
-      name: 'phone', 
-      label: 'Phone Number*', 
-      placeholder: 'e.g. 9876543210', 
+    { name: 'name', label: 'Vendor Name*', placeholder: 'e.g. Quick Fix' },
+    {
+      name: 'phone',
+      label: 'Phone Number*',
+      placeholder: 'e.g. 9876543210',
       keyboardType: 'phone-pad',
       maxLength: 10
     },
     { name: 'address', label: 'Address*', placeholder: 'e.g. 456 Main St, City' },
-    { 
-      name: 'services', 
-      label: 'Services* (comma separated)', 
-      placeholder: 'e.g. Repair, Installation, Maintenance' 
+    {
+      name: 'services',
+      label: 'Services* (comma separated)',
+      placeholder: 'e.g. Repair, Installation, Maintenance'
     },
-    { 
-      name: 'workingDays', 
-      label: 'Working Days* (comma separated)', 
-      placeholder: 'e.g. Monday, Wednesday, Friday' 
+    {
+      name: 'workingDays',
+      label: 'Working Days* (comma separated)',
+      placeholder: 'e.g. Monday, Wednesday, Friday'
     },
-    { 
-      name: 'hours', 
-      label: 'Working Hours*', 
-      placeholder: 'e.g. 09:00 - 18:00' 
+    {
+      name: 'hours',
+      label: 'Working Hours*',
+      placeholder: 'e.g. 09:00 - 18:00'
     },
-    { 
-      name: 'feeStructure', 
-      label: 'Fee Structure*', 
-      placeholder: 'e.g. ₹500 per hour or Call for quote' 
+    {
+      name: 'feeStructure',
+      label: 'Fee Structure*',
+      placeholder: 'e.g. ₹500 per hour or Call for quote'
     }
   ];
 
   return (
-    <ScrollView 
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      keyboardShouldPersistTaps="handled"
-    >
+    <View style={styles.mainContainer}>
+
       <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
           style={styles.backIconButton}
         >
           <Icon name="arrow-left" size={24} color="#fff" />
@@ -217,88 +216,103 @@ const AddVendorScreen = () => {
         <Text style={styles.headerTitle}>Add New Vendor</Text>
       </View>
 
-      <View style={styles.formContainer}>
-        {/* Images Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Images</Text>
-          <View style={styles.imagesContainer}>
-            {images.map((image, index) => (
-              <View key={index} style={styles.imageContainer}>
-                <Image source={{ uri: image }} style={styles.image} />
-                <TouchableOpacity 
-                  style={styles.removeImageButton}
-                  onPress={() => removeImage(index)}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.formContainer}>
+            {/* Images Section */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Images</Text>
+              <View style={styles.imagesContainer}>
+                {images.map((image, index) => (
+                  <View key={index} style={styles.imageContainer}>
+                    <Image source={{ uri: image }} style={styles.image} />
+                    <TouchableOpacity
+                      style={styles.removeImageButton}
+                      onPress={() => removeImage(index)}
+                    >
+                      <Icon name="close" size={20} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+              {uploading ? (
+                <View style={styles.uploadingContainer}>
+                  <ActivityIndicator size="small" color="#366732" />
+                  <Text style={styles.uploadingText}>Uploading: {Math.round(uploadProgress)}%</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.addImageButton}
+                  onPress={pickImage}
                 >
-                  <Icon name="close" size={20} color="#fff" />
+                  <Icon name="image-plus" size={20} color="#fff" />
+                  <Text style={styles.addImageText}>Add Image</Text>
                 </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Form Fields */}
+            {inputFields.map(input => (
+              <View key={input.name} style={styles.inputContainer}>
+                <Text style={styles.label}>{input.label}</Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    errors[input.name] && styles.inputError,
+                    (input.name === 'address' || input.name === 'feeStructure') && styles.multilineInput
+                  ]}
+                  value={form[input.name]}
+                  onChangeText={(value) => handleChange(input.name, value)}
+                  placeholder={input.placeholder}
+                  keyboardType={input.keyboardType || 'default'}
+                  maxLength={input.maxLength}
+                  multiline={input.name === 'address' || input.name === 'feeStructure'}
+                  numberOfLines={input.name === 'address' || input.name === 'feeStructure' ? 3 : 1}
+                  textAlignVertical={input.name === 'address' || input.name === 'feeStructure' ? 'top' : 'center'}
+                />
+                {errors[input.name] && (
+                  <Text style={styles.errorText}>{errors[input.name]}</Text>
+                )}
               </View>
             ))}
-          </View>
-          {uploading ? (
-            <View style={styles.uploadingContainer}>
-              <ActivityIndicator size="small" color="#366732" />
-              <Text style={styles.uploadingText}>Uploading: {Math.round(uploadProgress)}%</Text>
-            </View>
-          ) : (
-            <TouchableOpacity 
-              style={styles.addImageButton}
-              onPress={pickImage}
-            >
-              <Icon name="image-plus" size={20} color="#fff" />
-              <Text style={styles.addImageText}>Add Image</Text>
-            </TouchableOpacity>
-          )}
-        </View>
 
-        {/* Form Fields */}
-        {inputFields.map(input => (
-          <View key={input.name} style={styles.inputContainer}>
-            <Text style={styles.label}>{input.label}</Text>
-            <TextInput
+            {/* Submit Button */}
+            <TouchableOpacity
               style={[
-                styles.input,
-                errors[input.name] && styles.inputError
+                styles.submitButton,
+                loading && styles.submitButtonDisabled
               ]}
-              value={form[input.name]}
-              onChangeText={(value) => handleChange(input.name, value)}
-              placeholder={input.placeholder}
-              keyboardType={input.keyboardType || 'default'}
-              maxLength={input.maxLength}
-              multiline={input.name === 'address' || input.name === 'feeStructure'}
-            />
-            {errors[input.name] && (
-              <Text style={styles.errorText}>{errors[input.name]}</Text>
-            )}
+              onPress={handleAddVendor}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.submitButtonText}>Add Vendor</Text>
+              )}
+            </TouchableOpacity>
           </View>
-        ))}
-
-        {/* Submit Button */}
-        <TouchableOpacity
-          style={[
-            styles.submitButton,
-            loading && styles.submitButtonDisabled
-          ]}
-          onPress={handleAddVendor}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.submitButtonText}>Add Vendor</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+
+  mainContainer: {
     flex: 1,
     backgroundColor: '#F9F9F9',
-  },
-  contentContainer: {
-    paddingBottom: 30,
   },
   header: {
     backgroundColor: '#366732',
@@ -308,6 +322,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+  },
+  scrollContainer: {
+    paddingBottom: 10,
   },
   headerTitle: {
     color: '#fff',
@@ -399,6 +422,10 @@ const styles = StyleSheet.create({
     color: '#333',
     borderWidth: 1,
     borderColor: '#e0e0e0',
+  },
+  multilineInput: {
+    minHeight: 80,
+    paddingTop: 15,
   },
   inputError: {
     borderColor: '#e53935',

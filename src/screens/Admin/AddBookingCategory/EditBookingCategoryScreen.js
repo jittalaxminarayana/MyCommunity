@@ -11,7 +11,9 @@ import {
   Alert,
   Platform,
   Image,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  Keyboard,
+  Dimensions
 } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -22,6 +24,8 @@ import * as ImagePicker from 'react-native-image-picker';
 import IconSelector from './IconSelector';
 import { Formik } from 'formik';
 import * as Yup from 'yup';
+
+const { height: screenHeight } = Dimensions.get('window');
 
 // Validation schema for the form
 const CategorySchema = Yup.object().shape({
@@ -52,6 +56,21 @@ const EditBookingCategoryScreen = ({ navigation }) => {
   const [newEquipment, setNewEquipment] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      keyboardDidShowListener?.remove();
+      keyboardDidHideListener?.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const fetchCategory = async () => {
@@ -117,6 +136,9 @@ const EditBookingCategoryScreen = ({ navigation }) => {
   };
 
   const pickImage = async () => {
+    // Dismiss keyboard before opening image picker
+    Keyboard.dismiss();
+    
     ImagePicker.launchImageLibrary({
       mediaType: 'photo',
       quality: 0.8,
@@ -139,8 +161,10 @@ const EditBookingCategoryScreen = ({ navigation }) => {
       setUploading(true);
       const imageUri = Platform.OS === 'ios' ? image.uri.replace('file://', '') : image.uri;
       const filename = imageUri.substring(imageUri.lastIndexOf('/') + 1);
-      const storageRef = storage().ref(`communities/${communityData.id}/bookingsCategories/${categoryId}/${filename}`);
-      
+      const cleanName = communityData?.name.replace(/\s+/g, '-').toLowerCase();
+      const storageRef = storage().ref(
+        `communities/${communityData.id}-${cleanName}/bookingsCategories/${categoryId}/${filename}`
+      );
       const task = storageRef.putFile(imageUri);
       
       // Set up progress tracking
@@ -201,6 +225,10 @@ const EditBookingCategoryScreen = ({ navigation }) => {
     }
   };
 
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
+  };
+
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
@@ -216,7 +244,7 @@ const EditBookingCategoryScreen = ({ navigation }) => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backIconButton}>
             <Icon name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit Category</Text>
+          <Text style={styles.headerTitle}>Edit Booking Category</Text>
         </View>
         <View style={styles.notFoundMessageContainer}>
           <Text style={styles.notFoundText}>Category not found</Text>
@@ -226,19 +254,20 @@ const EditBookingCategoryScreen = ({ navigation }) => {
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={{ flex: 1 }} 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
-    >
-      <View style={{ flex: 1, backgroundColor: '#F9F9F9' }}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backIconButton}>
-            <Icon name="arrow-left" size={24} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit Category</Text>
-        </View>
+    <View style={styles.mainContainer}>
 
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backIconButton}>
+          <Icon name="arrow-left" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Edit Booking Category</Text>
+      </View>
+
+      <KeyboardAvoidingView 
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
         <Formik
           initialValues={{
             name: category.name || '',
@@ -255,281 +284,311 @@ const EditBookingCategoryScreen = ({ navigation }) => {
           onSubmit={handleSave}
         >
           {({ handleChange, handleBlur, handleSubmit, setFieldValue, values, errors, touched }) => (
-            <ScrollView style={styles.container}>
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Basic Information</Text>
-                
-                {/* Icon Selector */}
-                <View style={styles.iconSelector}>
-                  <Text style={styles.label}>Category Icon</Text>
-                  <TouchableOpacity 
-                    style={styles.iconButton}
-                    onPress={() => setIconSelectorVisible(true)}
-                  >
-                    <Icon name={selectedIcon} size={40} color="#366732" />
-                  </TouchableOpacity>
-                  <Text style={styles.iconName}>{selectedIcon}</Text>
-                </View>
-
-                {/* Name */}
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Name</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={values.name}
-                    onChangeText={handleChange('name')}
-                    onBlur={handleBlur('name')}
-                    placeholder="Category Name"
-                  />
-                  {touched.name && errors.name && (
-                    <Text style={styles.errorText}>{errors.name}</Text>
-                  )}
-                </View>
-
-                {/* Description */}
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Description</Text>
-                  <TextInput
-                    style={[styles.input, styles.textArea]}
-                    value={values.description}
-                    onChangeText={handleChange('description')}
-                    onBlur={handleBlur('description')}
-                    placeholder="Description"
-                    multiline
-                    numberOfLines={4}
-                    textAlignVertical="top"
-                  />
-                </View>
-
-                {/* Capacity */}
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Capacity</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={values.capacity}
-                    onChangeText={handleChange('capacity')}
-                    onBlur={handleBlur('capacity')}
-                    placeholder="Capacity"
-                    keyboardType="numeric"
-                  />
-                  {touched.capacity && errors.capacity && (
-                    <Text style={styles.errorText}>{errors.capacity}</Text>
-                  )}
-                </View>
-
-                {/* Opening Hours */}
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Opening Hours</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={values.openingHours}
-                    onChangeText={handleChange('openingHours')}
-                    onBlur={handleBlur('openingHours')}
-                    placeholder="e.g. 06:00 - 22:00"
-                  />
-                  {touched.openingHours && errors.openingHours && (
-                    <Text style={styles.errorText}>{errors.openingHours}</Text>
-                  )}
-                </View>
-
-                {/* Fee */}
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Fee</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={values.fee}
-                    onChangeText={handleChange('fee')}
-                    onBlur={handleBlur('fee')}
-                    placeholder="e.g. Free for residents or ₹500 per hour"
-                  />
-                  {touched.fee && errors.fee && (
-                    <Text style={styles.errorText}>{errors.fee}</Text>
-                  )}
-                </View>
-              </View>
-
-              {/* Booking Configuration */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Booking Configuration</Text>
-                
-                {/* Min Booking Duration */}
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Minimum Booking Duration (minutes)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={values.minBookingDuration}
-                    onChangeText={handleChange('minBookingDuration')}
-                    onBlur={handleBlur('minBookingDuration')}
-                    placeholder="e.g. 30"
-                    keyboardType="numeric"
-                  />
-                  {touched.minBookingDuration && errors.minBookingDuration && (
-                    <Text style={styles.errorText}>{errors.minBookingDuration}</Text>
-                  )}
-                </View>
-
-                {/* Max Booking Duration */}
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Maximum Booking Duration (minutes)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={values.maxBookingDuration}
-                    onChangeText={handleChange('maxBookingDuration')}
-                    onBlur={handleBlur('maxBookingDuration')}
-                    placeholder="e.g. 120"
-                    keyboardType="numeric"
-                  />
-                  {touched.maxBookingDuration && errors.maxBookingDuration && (
-                    <Text style={styles.errorText}>{errors.maxBookingDuration}</Text>
-                  )}
-                </View>
-
-                {/* Advance Booking Limit */}
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Advance Booking Limit (days)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={values.advanceBookingLimit}
-                    onChangeText={handleChange('advanceBookingLimit')}
-                    onBlur={handleBlur('advanceBookingLimit')}
-                    placeholder="e.g. 7"
-                    keyboardType="numeric"
-                  />
-                  {touched.advanceBookingLimit && errors.advanceBookingLimit && (
-                    <Text style={styles.errorText}>{errors.advanceBookingLimit}</Text>
-                  )}
-                </View>
-
-                {/* Requires Staff Approval */}
-                <TouchableOpacity 
-                  style={styles.checkboxContainer}
-                  onPress={() => setFieldValue('requiresStaffApproval', !values.requiresStaffApproval)}
-                >
-                  <View style={[
-                    styles.checkbox,
-                    values.requiresStaffApproval && styles.checkboxChecked
-                  ]}>
-                    {values.requiresStaffApproval && <Icon name="check" size={16} color="#fff" />}
-                  </View>
-                  <Text style={styles.checkboxLabel}>Requires Staff Approval</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Rules */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Rules</Text>
-                <View style={styles.rulesContainer}>
-                  {rules.map((rule, index) => (
-                    <View key={index} style={styles.ruleItem}>
-                      <Text style={styles.ruleText}>{rule}</Text>
-                      <TouchableOpacity 
-                        style={styles.removeButton}
-                        onPress={() => removeRule(index)}
-                      >
-                        <Icon name="close-circle" size={20} color="#e53935" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-                <View style={styles.addItemContainer}>
-                  <TextInput
-                    style={styles.addItemInput}
-                    value={newRule}
-                    onChangeText={setNewRule}
-                    placeholder="Add a new rule"
-                  />
-                  <TouchableOpacity 
-                    style={styles.addButton}
-                    onPress={addRule}
-                  >
-                    <Icon name="plus" size={24} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Equipment */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Equipment</Text>
-                <View style={styles.equipmentContainer}>
-                  {equipment.map((item, index) => (
-                    <View key={index} style={styles.equipmentChip}>
-                      <Text style={styles.equipmentText}>{item}</Text>
-                      <TouchableOpacity 
-                        style={styles.removeChipButton}
-                        onPress={() => removeEquipment(index)}
-                      >
-                        <Icon name="close-circle" size={16} color="#e53935" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-                <View style={styles.addItemContainer}>
-                  <TextInput
-                    style={styles.addItemInput}
-                    value={newEquipment}
-                    onChangeText={setNewEquipment}
-                    placeholder="Add equipment"
-                  />
-                  <TouchableOpacity 
-                    style={styles.addButton}
-                    onPress={addEquipment}
-                  >
-                    <Icon name="plus" size={24} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Images */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Images</Text>
-                
-                {/* Current Images */}
-                <View style={styles.imagesContainer}>
-                  {images.map((image, index) => (
-                    <View key={index} style={styles.imageContainer}>
-                      <Image source={{ uri: image }} style={styles.image} />
-                      <TouchableOpacity 
-                        style={styles.removeImageButton}
-                        onPress={() => removeImage(index)}
-                      >
-                        <Icon name="trash-can" size={24} color="#fff" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-                
-                {/* Add Image Button */}
-                {uploading ? (
-                  <View style={styles.uploadingContainer}>
-                    <ActivityIndicator size="small" color="#366732" />
-                    <Text style={styles.uploadingText}>Uploading: {Math.round(uploadProgress)}%</Text>
-                  </View>
-                ) : (
-                  <TouchableOpacity 
-                    style={styles.addImageButton}
-                    onPress={pickImage}
-                  >
-                    <Icon name="image-plus" size={24} color="#fff" />
-                    <Text style={styles.addImageText}>Add Image</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {/* Submit Button */}
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleSubmit}
-                disabled={saving}
+            <ScrollView 
+              style={styles.container}
+              contentContainerStyle={styles.scrollContainer}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <TouchableOpacity 
+                activeOpacity={1} 
+                onPress={dismissKeyboard}
+                style={styles.touchableContainer}
               >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Save Changes</Text>
-                )}
-              </TouchableOpacity>
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Basic Information</Text>
+                  
+                  {/* Icon Selector */}
+                  <View style={styles.iconSelector}>
+                    <Text style={styles.label}>Category Icon</Text>
+                    <TouchableOpacity 
+                      style={styles.iconButton}
+                      onPress={() => setIconSelectorVisible(true)}
+                    >
+                      <Icon name={selectedIcon} size={40} color="#366732" />
+                    </TouchableOpacity>
+                    <Text style={styles.iconName}>{selectedIcon}</Text>
+                  </View>
 
-              {/* For spacing at bottom of scroll view */}
-              <View style={{ height: 30 }} />
+                  {/* Name */}
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Name</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={values.name}
+                      onChangeText={handleChange('name')}
+                      onBlur={handleBlur('name')}
+                      placeholder="Category Name"
+                      returnKeyType="next"
+                      blurOnSubmit={false}
+                    />
+                    {touched.name && errors.name && (
+                      <Text style={styles.errorText}>{errors.name}</Text>
+                    )}
+                  </View>
+
+                  {/* Description */}
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Description</Text>
+                    <TextInput
+                      style={[styles.input, styles.textArea]}
+                      value={values.description}
+                      onChangeText={handleChange('description')}
+                      onBlur={handleBlur('description')}
+                      placeholder="Description"
+                      multiline
+                      numberOfLines={4}
+                      textAlignVertical="top"
+                      returnKeyType="next"
+                      blurOnSubmit={false}
+                    />
+                  </View>
+
+                  {/* Capacity */}
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Capacity</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={values.capacity}
+                      onChangeText={handleChange('capacity')}
+                      onBlur={handleBlur('capacity')}
+                      placeholder="Capacity"
+                      keyboardType="numeric"
+                      returnKeyType="next"
+                      blurOnSubmit={false}
+                    />
+                    {touched.capacity && errors.capacity && (
+                      <Text style={styles.errorText}>{errors.capacity}</Text>
+                    )}
+                  </View>
+
+                  {/* Opening Hours */}
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Opening Hours</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={values.openingHours}
+                      onChangeText={handleChange('openingHours')}
+                      onBlur={handleBlur('openingHours')}
+                      placeholder="e.g. 06:00 - 22:00"
+                      returnKeyType="next"
+                      blurOnSubmit={false}
+                    />
+                    {touched.openingHours && errors.openingHours && (
+                      <Text style={styles.errorText}>{errors.openingHours}</Text>
+                    )}
+                  </View>
+
+                  {/* Fee */}
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Fee</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={values.fee}
+                      onChangeText={handleChange('fee')}
+                      onBlur={handleBlur('fee')}
+                      placeholder="e.g. Free for residents or ₹500 per hour"
+                      returnKeyType="next"
+                      blurOnSubmit={false}
+                    />
+                    {touched.fee && errors.fee && (
+                      <Text style={styles.errorText}>{errors.fee}</Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Booking Configuration */}
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Booking Configuration</Text>
+                  
+                  {/* Min Booking Duration */}
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Minimum Booking Duration (minutes)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={values.minBookingDuration}
+                      onChangeText={handleChange('minBookingDuration')}
+                      onBlur={handleBlur('minBookingDuration')}
+                      placeholder="e.g. 30"
+                      keyboardType="numeric"
+                      returnKeyType="next"
+                      blurOnSubmit={false}
+                    />
+                    {touched.minBookingDuration && errors.minBookingDuration && (
+                      <Text style={styles.errorText}>{errors.minBookingDuration}</Text>
+                    )}
+                  </View>
+
+                  {/* Max Booking Duration */}
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Maximum Booking Duration (minutes)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={values.maxBookingDuration}
+                      onChangeText={handleChange('maxBookingDuration')}
+                      onBlur={handleBlur('maxBookingDuration')}
+                      placeholder="e.g. 120"
+                      keyboardType="numeric"
+                      returnKeyType="next"
+                      blurOnSubmit={false}
+                    />
+                    {touched.maxBookingDuration && errors.maxBookingDuration && (
+                      <Text style={styles.errorText}>{errors.maxBookingDuration}</Text>
+                    )}
+                  </View>
+
+                  {/* Advance Booking Limit */}
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Advance Booking Limit (days)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={values.advanceBookingLimit}
+                      onChangeText={handleChange('advanceBookingLimit')}
+                      onBlur={handleBlur('advanceBookingLimit')}
+                      placeholder="e.g. 7"
+                      keyboardType="numeric"
+                      returnKeyType="done"
+                    />
+                    {touched.advanceBookingLimit && errors.advanceBookingLimit && (
+                      <Text style={styles.errorText}>{errors.advanceBookingLimit}</Text>
+                    )}
+                  </View>
+
+                  {/* Requires Staff Approval */}
+                  <TouchableOpacity 
+                    style={styles.checkboxContainer}
+                    onPress={() => setFieldValue('requiresStaffApproval', !values.requiresStaffApproval)}
+                  >
+                    <View style={[
+                      styles.checkbox,
+                      values.requiresStaffApproval && styles.checkboxChecked
+                    ]}>
+                      {values.requiresStaffApproval && <Icon name="check" size={16} color="#fff" />}
+                    </View>
+                    <Text style={styles.checkboxLabel}>Requires Staff Approval</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Rules */}
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Rules</Text>
+                  <View style={styles.rulesContainer}>
+                    {rules.map((rule, index) => (
+                      <View key={index} style={styles.ruleItem}>
+                        <Text style={styles.ruleText}>{rule}</Text>
+                        <TouchableOpacity 
+                          style={styles.removeButton}
+                          onPress={() => removeRule(index)}
+                        >
+                          <Icon name="close-circle" size={20} color="#e53935" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={styles.addItemContainer}>
+                    <TextInput
+                      style={styles.addItemInput}
+                      value={newRule}
+                      onChangeText={setNewRule}
+                      placeholder="Add a new rule"
+                      returnKeyType="done"
+                      onSubmitEditing={addRule}
+                    />
+                    <TouchableOpacity 
+                      style={styles.addButton}
+                      onPress={addRule}
+                    >
+                      <Icon name="plus" size={24} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Equipment */}
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Equipment</Text>
+                  <View style={styles.equipmentContainer}>
+                    {equipment.map((item, index) => (
+                      <View key={index} style={styles.equipmentChip}>
+                        <Text style={styles.equipmentText}>{item}</Text>
+                        <TouchableOpacity 
+                          style={styles.removeChipButton}
+                          onPress={() => removeEquipment(index)}
+                        >
+                          <Icon name="close-circle" size={16} color="#e53935" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={styles.addItemContainer}>
+                    <TextInput
+                      style={styles.addItemInput}
+                      value={newEquipment}
+                      onChangeText={setNewEquipment}
+                      placeholder="Add equipment"
+                      returnKeyType="done"
+                      onSubmitEditing={addEquipment}
+                    />
+                    <TouchableOpacity 
+                      style={styles.addButton}
+                      onPress={addEquipment}
+                    >
+                      <Icon name="plus" size={24} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Images */}
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Images</Text>
+                  
+                  {/* Current Images */}
+                  <View style={styles.imagesContainer}>
+                    {images.map((image, index) => (
+                      <View key={index} style={styles.imageContainer}>
+                        <Image source={{ uri: image }} style={styles.image} />
+                        <TouchableOpacity 
+                          style={styles.removeImageButton}
+                          onPress={() => removeImage(index)}
+                        >
+                          <Icon name="trash-can" size={24} color="#fff" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                  
+                  {/* Add Image Button */}
+                  {uploading ? (
+                    <View style={styles.uploadingContainer}>
+                      <ActivityIndicator size="small" color="#366732" />
+                      <Text style={styles.uploadingText}>Uploading: {Math.round(uploadProgress)}%</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity 
+                      style={styles.addImageButton}
+                      onPress={pickImage}
+                    >
+                      <Icon name="image-plus" size={24} color="#fff" />
+                      <Text style={styles.addImageText}>Add Image</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Submit Button */}
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={handleSubmit}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Save Changes</Text>
+                  )}
+                </TouchableOpacity>
+
+                {/* Extra space for keyboard */}
+                <View style={{ height: keyboardHeight > 0 ? 50 : 30 }} />
+              </TouchableOpacity>
             </ScrollView>
           )}
         </Formik>
@@ -543,16 +602,29 @@ const EditBookingCategoryScreen = ({ navigation }) => {
             selectedIcon={selectedIcon}
           />
         )}
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#F9F9F9',
+  },
+  keyboardContainer: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: '#F9F9F9',
-    padding: 16,
+  },
+  scrollContainer: {
+    padding: 14,
+    paddingBottom: 10,
+  },
+  touchableContainer: {
+    flex: 1,
   },
   header: {
     backgroundColor: '#366732',
