@@ -107,11 +107,20 @@ const MainTabs = ({ role, userData, communityData, navigation }) => {
         tabBarActiveTintColor: '#f7933b',
         tabBarInactiveTintColor: '#488a42',
         tabBarStyle: {
-          paddingBottom: 8,
+          bottom: 2, 
+          elevation: 5,
+          backgroundColor: '#fff',
+          borderRadius: 20, 
           height: 60,
+          shadowColor: '#000',
+          shadowOpacity: 0.1,
+          shadowOffset: { width: 0, height: 4 },
+          shadowRadius: 8,
+          backgroundColor:'#ffffff'
         },
         tabBarLabelStyle: {
-          paddingBottom: 0,
+          paddingBottom: 4,
+          fontSize: 12,
         },
       })}
     >

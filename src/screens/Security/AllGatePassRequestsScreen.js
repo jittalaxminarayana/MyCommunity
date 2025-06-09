@@ -68,6 +68,14 @@ const AllGatePassRequestsScreen = ({ navigation }) => {
   };
 
   const handleCheckIn = async (item) => {
+
+      if (item.status !== 'pending') {
+          Alert.alert(
+              "Already Processed",
+              `This gate pass has already been ${item.status}.`
+          );
+          return;
+      }
     Alert.alert(
       "Verify Visitor",
       `Confirm details for ${item.visitorName}:\n\n` +
@@ -224,6 +232,7 @@ const AllGatePassRequestsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
+        
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-left" size={24} color="#fff" />
@@ -288,8 +297,8 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#366732',
-    padding: 15,
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    padding: 16,
+    paddingTop: Platform.OS === 'ios' ? 50 : 35,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -351,7 +360,7 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     borderRadius: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#366732',
+    borderLeftColor: '#4CAF50',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

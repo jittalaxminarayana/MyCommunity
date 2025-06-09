@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
   },
   messagesList: {
     padding: 12,
-    paddingBottom: 80, // Increased for better spacing at bottom
+    paddingBottom: 5, 
   },
   dateHeaderContainer: {
     alignItems: 'center',
@@ -517,8 +517,9 @@ const styles = StyleSheet.create({
     padding: 8,
     paddingHorizontal: 12,
     backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    // borderTopWidth: 1,
+    // borderTopColor: '#e0e0e0',
+    paddingBottom:15
   },
   attachButton: {
     padding: 8,
