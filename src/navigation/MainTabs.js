@@ -53,7 +53,6 @@ const ResidentStack = () => (
 const SecurityStack = () => (
   <Stack.Navigator>
     <Stack.Screen name="SecurityDashboard" component={SecurityDashboard} options={{ headerShown: false }} />
-    {/* Add other security-specific screens here */}
   </Stack.Navigator>
 );
 

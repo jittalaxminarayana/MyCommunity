@@ -23,7 +23,7 @@ const GatePassHistoryScreen = ({ navigation }) => {
     const communityData = useSelector((state) => state?.user?.communityData);
 
 
-    const [activeTab, setActiveTab] = useState('my-passes');
+    const [activeTab, setActiveTab] = useState('requests');
     const [myPasses, setMyPasses] = useState([]);
     const [requests, setRequests] = useState([]);
     const [loadingPasses, setLoadingPasses] = useState(true);
@@ -48,7 +48,7 @@ const GatePassHistoryScreen = ({ navigation }) => {
                 .collection('communities')
                 .doc(communityData.id)
                 .collection('gatePasses')
-                .where('requestedByUserId', '==', userData.id)
+                .where('residentId', '==', userData.id)
                 .orderBy('createdAt', 'desc')
                 .onSnapshot(
                     (snapshot) => {
@@ -83,6 +83,7 @@ const GatePassHistoryScreen = ({ navigation }) => {
                 .collection('gatePassRequests')
                 .where('requestedByRole', '==', 'Security')
                 .where('status', '==', 'pending')
+                .where('residentId', '==', userData?.id)
                 .orderBy('createdAt', 'desc')
                 .onSnapshot(snapshot => {
                     const requestList = snapshot.docs.map(doc => {
@@ -126,8 +127,6 @@ const GatePassHistoryScreen = ({ navigation }) => {
                     pin: pin,
                     status: 'used',
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    generatedBy: userData.id,
-                    generatedByName: userData.name,
                 });
 
             Alert.alert('Success', 'Request approved and gate pass created.');

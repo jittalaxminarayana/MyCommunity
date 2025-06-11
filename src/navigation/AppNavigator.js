@@ -8,6 +8,7 @@ import { setUserData, setCommunityData } from '../store/Slices/userSlice';
 import { StatusBar, ActivityIndicator, View } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import initializeFirebase from '../services/firebase';
+import { navigationRef } from '../components/NavigationService';
 
 // Initialize Firebase before Entering into the Application
 initializeFirebase();
@@ -102,7 +103,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <StatusBar backgroundColor="#366732" barStyle="light-content" />
       {userData && communityData ? (
          <MainNavigator role={userData.role} userData={userData} communityData={communityData} />

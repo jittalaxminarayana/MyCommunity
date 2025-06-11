@@ -20,6 +20,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSelector } from 'react-redux';
 import firestore from '@react-native-firebase/firestore';
 import { useFocusEffect } from '@react-navigation/native';
+import NotificationService from '../../components/ NotificationService';
 
 const SecurityDashboard = ({ navigation }) => {
   const userData = useSelector((state) => state?.user?.userData);
@@ -62,6 +63,25 @@ const SecurityDashboard = ({ navigation }) => {
     }
   }, [searchQuery, gatePassRequests]);
 
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      NotificationService.requestUserPermission();
+      NotificationService.getFCMToken(userData?.id, communityData?.id); // Pass user and community IDs
+      NotificationService.handleForegroundNotifications();
+      NotificationService.handleBackgroundNotifications();
+      NotificationService.handleKilledStateNotifications();
+  
+      // Set up notification listeners
+      async function setupListeners() {
+        const unsubscribeForeground = await NotificationService.onNotificationEvent();
+        const unsubscribeBackground = await NotificationService.onBackgroundEvent();
+      }
+      setupListeners();
+    }, 500);
+  
+    return () => clearTimeout(timeout);
+  }, [userData?.id, communityData?.id]);
+   
   useEffect(() => {
     if (!communityData?.id) return;
   
@@ -354,6 +374,17 @@ const SecurityDashboard = ({ navigation }) => {
                     processedByName: userData?.name || 'Security',
                     pinCode: item.pinCode
                   });
+
+
+                // Update mypasses colletion 
+                await firestore()
+                  .collection('communities')
+                  .doc(communityData.id)
+                  .collection('gatePasses')
+                  .doc(item.linkedGatePassId)
+                  .update({
+                    status: 'used'
+                  });
   
                 Alert.alert("Check In Successful", `${item.visitorName} has been checked in`);
                 
@@ -568,7 +599,7 @@ const SecurityDashboard = ({ navigation }) => {
             />
             <View style={styles.userTextContainer}>
               <Text style={styles.userName}>{communityData?.name || 'Security Hub'}</Text>
-              <Text style={styles.welcomeText}>{userData?.displayName || 'Security Guard'}</Text>
+              <Text style={styles.welcomeText}>{userData?.name || 'Security Guard'}</Text>
             </View>
           </View>
 
@@ -578,7 +609,7 @@ const SecurityDashboard = ({ navigation }) => {
               <Text style={styles.securityText}>SECURITY</Text>
             </View>
           </View>
-        </View>
+        </View> 
 
         {/* QR Scanner & Gate Pass Section */}
         <View style={styles.sectionContainer}>
@@ -1175,7 +1206,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   searchContainer: {
-    marginBottom: 15,
+    marginBottom: 10,
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -1217,7 +1248,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#666',
     marginBottom: 8,
-    marginTop: 5,
   },
   searchLoadingContainer: {
     flexDirection: 'row',

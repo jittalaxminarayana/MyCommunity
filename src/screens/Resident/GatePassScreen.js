@@ -16,6 +16,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { format } from 'date-fns';
+import { functions } from '../../services/firebase';
+import { httpsCallable } from 'firebase/functions';
 
 const GatePassScreen = ({ navigation }) => {
     const userData = useSelector((state) => state.user.userData);
@@ -66,50 +68,24 @@ const GatePassScreen = ({ navigation }) => {
 
     // Handle creating a new gate pass request
     const handleCreateRequest = async () => {
-        // Validate form data
         if (!visitorName.trim() || !visitorPhone.trim()) {
             Alert.alert('Missing Information', 'Please enter visitor name and phone number.');
             return;
         }
-
+    
         if (validFrom > validTo) {
             Alert.alert('Invalid Date Range', 'Valid from date must be before valid to date.');
             return;
         }
-
+    
         setLoading(true);
-
+    
         try {
             // Generate a PIN for verification
             const pinCode = generatePIN();
-
-            // Create gate pass request
-            const requestData = {
-                visitorName,
-                visitorPhone,
-                purpose,
-                validFrom: firebase.firestore.Timestamp.fromDate(validFrom),
-                validTo: firebase.firestore.Timestamp.fromDate(validTo),
-                vehicleNumber: vehicleNumber || null,
-                notes: note || null,
-                pinCode,
-                status: 'pending',
-                requestedByUserId: userData.id,
-                requestedByRole:userData.role,
-                requestedByName: userData.name,
-                apartmentId: userData.apartmentId,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                securityImages: [],
-            };
-
-            await firebase.firestore()
-                .collection('communities')
-                .doc(communityData.id)
-                .collection('gatePassRequests')
-                .add(requestData);
-
-
-            await firebase.firestore()
+    
+            // 🔥 Add gatePasses entry and get its ID
+            const gatePassDocRef = await firebase.firestore()
                 .collection('communities')
                 .doc(communityData.id)
                 .collection('gatePasses')
@@ -123,13 +99,43 @@ const GatePassScreen = ({ navigation }) => {
                     notes: note || null,
                     pin: pinCode,
                     status: 'active',
+                    residentId: userData.id,
                     requestedByUserId: userData.id,
-                    requestedByRole:userData.role,
+                    requestedByRole: userData.role,
                     requestedByName: userData.name,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 });
+    
+            const gatePassId = gatePassDocRef.id; 
+    
+            const requestData = {
+                visitorName,
+                visitorPhone,
+                purpose,
+                validFrom: firebase.firestore.Timestamp.fromDate(validFrom),
+                validTo: firebase.firestore.Timestamp.fromDate(validTo),
+                vehicleNumber: vehicleNumber || null,
+                notes: note || null,
+                pinCode,
+                status: 'pending',
+                requestedByUserId: userData.id,
+                requestedByRole: userData.role,
+                requestedByName: userData.name,
+                apartmentId: userData.apartmentId,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                securityImages: [],
+                linkedGatePassId: gatePassId, 
+            };
+    
+            const gatePassRequestRef = await firebase.firestore()
+                .collection('communities')
+                .doc(communityData.id)
+                .collection('gatePassRequests')
+                .add(requestData);
 
-            // Reset form
+            const passId = gatePassRequestRef.id;
+    
+            // ✅ Reset form
             setVisitorName('');
             setVisitorPhone('');
             setPurpose('guest');
@@ -139,6 +145,9 @@ const GatePassScreen = ({ navigation }) => {
             setValidTo(new Date(new Date().setDate(new Date().getDate() + 1)));
             setDurationType('hours');
 
+            // Send notification with the passId
+            await sendGatePassNotification(communityData?.id, passId, userData.apartmentId, visitorName);
+    
             Alert.alert('Success', 'Gate pass request created successfully!');
             navigation.goBack();
         } catch (error) {
@@ -149,6 +158,28 @@ const GatePassScreen = ({ navigation }) => {
         }
     };
 
+    const sendGatePassNotification = async (communityId, passId, apartmentId, visitorName) => {
+        try {
+          const sendNotificationToSecurity = httpsCallable(functions(), 'sendNotificationToSecurity');
+      
+          const result = await sendNotificationToSecurity({
+            communityId: communityId,
+            passId: passId.toString(),
+            title: 'Visitor Entry Alert',
+            body: `New visitor pass generated from flat ${apartmentId}`,
+            extraData: {
+              screen: 'SecurityDashboard',
+              visitorName: visitorName,
+              apartmentId: apartmentId
+            },
+          });
+      
+          console.log('Notification Sent:', result.data);
+        } catch (error) {
+          console.error('Notification Error:', error);
+        }
+      };
+    
     return (
         <View style={styles.container}>
             <View style={styles.header}>

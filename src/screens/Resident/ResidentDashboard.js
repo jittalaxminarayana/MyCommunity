@@ -16,9 +16,11 @@ import {
   TouchableWithoutFeedback
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
 import { useSelector } from 'react-redux';
 import firestore from '@react-native-firebase/firestore';
 import {useFocusEffect } from '@react-navigation/native';
+import NotificationService from '../../components/ NotificationService';
 
 const ResidentDashboard = ({ navigation }) => {
   const userData = useSelector((state) => state?.user?.userData);
@@ -111,6 +113,25 @@ const ResidentDashboard = ({ navigation }) => {
       return () => backHandler.remove();
     }, [])
   );
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      NotificationService.requestUserPermission();
+      NotificationService.getFCMToken(userData?.id, communityData?.id); // Pass user and community IDs
+      NotificationService.handleForegroundNotifications();
+      NotificationService.handleBackgroundNotifications();
+      NotificationService.handleKilledStateNotifications();
+  
+      // Set up notification listeners
+      async function setupListeners() {
+        const unsubscribeForeground = await NotificationService.onNotificationEvent();
+        const unsubscribeBackground = await NotificationService.onBackgroundEvent();
+      }
+      setupListeners();
+    }, 500);
+  
+    return () => clearTimeout(timeout);
+  }, [userData?.id, communityData?.id]);
 
   if (loading) {
     return (
@@ -379,15 +400,23 @@ const ResidentDashboard = ({ navigation }) => {
               style={styles.userAvatar}
             />
             <View style={styles.userTextContainer}>
-              <Text style={styles.userName}>{communityData?.name || 'Our Community'} Resident </Text>
+              <Text style={styles.userName}>{communityData?.name || 'Our Community'}</Text>
               <Text style={styles.welcomeText}>{userData?.name || 'Resident'}</Text>
             </View>
           </View>
 
-          {userData?.role === 'Admin' && (
+          {userData?.role === 'Admin' ? (
             <TouchableOpacity style={styles.switchButton} onPress={() => navigation.navigate('AdminDashboard')}>
+              <FontAwesome5 name="user-cog" size={16} color="#366732" />
               <Text style={styles.switchButtonText}>Switch to Admin</Text>
             </TouchableOpacity>
+          ) : (
+            <View style={styles.badgeContainer}>
+              <View style={styles.securityBadge}>
+                <FontAwesome5 name="house-user" size={16} color="#366732" />
+                <Text style={styles.securityText}>RESIDENT</Text>
+              </View>
+            </View>
           )}
         </View>
 
@@ -562,12 +591,14 @@ const styles = StyleSheet.create({
     padding: 8, 
     borderRadius: 6,
     alignSelf: 'flex-end',
-    marginTop:-20
+    marginTop:-5,
+    flexDirection:'row'
   },
   switchButtonText: {
     color: '#366732',
     fontWeight: 'bold',
     fontSize: 14,
+    marginLeft:5
   },  
   userInfo: {
     flexDirection: 'row',
@@ -585,16 +616,34 @@ const styles = StyleSheet.create({
     marginLeft: 15,
   },
   welcomeText: {
-    ontSize: 14,
+    fontSize: 16,
     color: '#fff',
-    opacity: 1,
-    marginTop: 2,
+    opacity: 0.9,
   },
   userName: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
     marginTop: 2,
+  },
+  badgeContainer: {
+    alignSelf: 'flex-end',
+    marginTop: -5,
+  },
+  securityBadge: {
+    backgroundColor: '#E6F2EA',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  securityText: {
+    color: '#366732',
+    fontWeight: 'bold',
+    fontSize: 12,
+    marginLeft: 4,
+    marginTop:3
   },
   communityInfo: {
     flexDirection: 'row',

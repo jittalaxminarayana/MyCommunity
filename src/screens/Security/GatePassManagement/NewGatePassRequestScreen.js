@@ -11,13 +11,19 @@ import {
   FlatList,
   Image,
   Platform,
-  Linking
+  Linking,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSelector } from 'react-redux';
 import firestore from '@react-native-firebase/firestore';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
+import { functions } from '../../../services/firebase';
+import { httpsCallable } from 'firebase/functions';
+
 
 const NewGatePassRequestScreen = () => {
   const navigation = useNavigation();
@@ -33,7 +39,6 @@ const NewGatePassRequestScreen = () => {
   const [apartmentId, setApartmentId] = useState('');
   const [residentName, setResidentName] = useState('');
   const [residentId, setResidentId] = useState('');
-  
   // Date/time pickers
   const [fromDate, setFromDate] = useState(new Date());
   const [toDate, setToDate] = useState(new Date(Date.now() + 3600000)); // 1 hour later
@@ -54,6 +59,11 @@ const NewGatePassRequestScreen = () => {
   // Generate a 6-digit PIN
   const generatePin = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
+  };
+
+  // Dismiss keyboard when tapping outside
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
   };
 
   // Fetch residents for the community
@@ -173,6 +183,7 @@ const NewGatePassRequestScreen = () => {
     setApartmentId(resident.apartmentId);
     setSearchQuery('');
     setShowSearchResults(false);
+    dismissKeyboard();
   };
 
   // Handle call functionality
@@ -188,12 +199,12 @@ const NewGatePassRequestScreen = () => {
       Alert.alert('Validation Error', 'Please fill all required fields');
       return;
     }
-
+  
     if (fromDate >= toDate) {
       Alert.alert('Validation Error', 'End time must be after start time');
       return;
     }
-
+  
     try {
       setLoading(true);
       
@@ -210,23 +221,32 @@ const NewGatePassRequestScreen = () => {
         status: 'pending',
         requestedByUserId: userData.id,
         requestedByName: userData.name,
-        requestedByRole:userData.role,
+        requestedByRole: userData.role,
+        residentName,
+        residentId,
         apartmentId,
         createdAt: firestore.FieldValue.serverTimestamp(),
         securityImages: [],
       };
-
-      await firestore()
+  
+      // Add the document and get the reference
+      const docRef = await firestore()
         .collection('communities')
         .doc(communityData.id)
         .collection('gatePassRequests')
         .add(requestData);
+  
+      // Get the document ID
+      const passId = docRef.id;
       
       Alert.alert(
         'Success', 
         'Gate pass request created successfully!',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
+  
+      // Send notification with the passId
+      await sendGatePassNotification(residentId, communityData?.id, passId);
       
     } catch (error) {
       console.error('Error creating gate pass request:', error);
@@ -235,224 +255,279 @@ const NewGatePassRequestScreen = () => {
       setLoading(false);
     }
   };
+  
+  const sendGatePassNotification = async (residentUserId, communityId, passId) => {
+    console.log("residentUserId, communityId,passId@@@@@@@@@@@@@",residentUserId, communityId, passId);
+    try {
+      const sendToUserDevices = httpsCallable(functions(), 'sendToUserDevices');
+  
+      const result = await sendToUserDevices({
+        communityId: communityId,
+        userId: residentUserId,
+        title: 'New Visitor Pass Request',
+        body: `You have a new visitor pass request for ${visitorName}`,
+        extraData: {
+          screen: 'GatePassHistoryScreen',
+          passId: passId.toString()
+        },
+      });
+  
+      console.log('Notification Sent:', result.data);
+    } catch (error) {
+      console.error('Notification Error:', error);
+    }
+  };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-left" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Gate Pass Request</Text>
-        <View style={styles.headerPlaceholder} />
-      </View>
-
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {/* Resident Search Section */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Search Resident*</Text>
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search by name, flat number, phone, or email"
-              autoCorrect={false}
-            />
-            <Icon name="magnify" size={24} color="#666" style={styles.searchIcon} />
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 40}
+    >
+      <TouchableWithoutFeedback onPress={dismissKeyboard}>
+        <View style={styles.container}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Icon name="arrow-left" size={24} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>New Gate Pass Request</Text>
+            <View style={styles.headerPlaceholder} />
           </View>
-          
-          {/* Selected Resident Display */}
-          {residentName && (
-            <View style={styles.selectedResidentContainer}>
-              <Icon name="check-circle" size={20} color="#366732" />
-              <Text style={styles.selectedResidentText}>
-                {residentName} (Apt: {apartmentId})
-              </Text>
-            </View>
-          )}
-          
-          {/* Search Results */}
-          {showSearchResults && (
-            <View style={styles.searchResultsContainer}>
-              {isSearching ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color="#366732" />
-                  <Text style={styles.loadingText}>Searching...</Text>
+
+          <ScrollView 
+            style={styles.content} 
+            contentContainerStyle={styles.contentContainer}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Resident Search Section */}
+            <View style={styles.section}>
+              <Text style={styles.label}>Search Resident*</Text>
+              <View style={styles.searchContainer}>
+                <TextInput
+                  style={styles.searchInput}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search by name, flat number, phone, or email"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  onSubmitEditing={performSearch}
+                />
+                <Icon name="magnify" size={24} color="#666" style={styles.searchIcon} />
+              </View>
+              
+              {/* Selected Resident Display */}
+              {residentName && (
+                <View style={styles.selectedResidentContainer}>
+                  <Icon name="check-circle" size={20} color="#366732" />
+                  <Text style={styles.selectedResidentText}>
+                    {residentName} (Apt: {apartmentId})
+                  </Text>
                 </View>
-              ) : searchResults.length > 0 ? (
-                <FlatList
-                  data={searchResults}
-                  keyExtractor={(item) => item.id}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity 
-                      style={styles.searchResultItem}
-                      onPress={() => selectResident(item)}
-                    >
-                      {item.profileImageUrl ? (
-                        <Image 
-                          source={{ uri: item.profileImageUrl }} 
-                          style={styles.profileImage} 
-                        />
-                      ) : (
-                        <View style={[styles.profileImage, styles.profilePlaceholder]}>
-                          <Icon name="account" size={20} color="#fff" />
-                        </View>
-                      )}
-                      
-                      <View style={styles.residentInfo}>
-                        <Text style={styles.residentName}>{item.name}</Text>
-                        <Text style={styles.residentDetails}>
-                          Apt: {item.apartmentId} • {item.phoneNumber}
-                        </Text>
-                        {item.occupancyStatus && (
-                          <Text style={styles.occupancyStatus}>
-                            {item.occupancyStatus}
-                          </Text>
-                        )}
-                      </View>
-                      
-                      {item.phoneNumber && (
+              )}
+              
+              {/* Search Results */}
+              {showSearchResults && (
+                <View style={styles.searchResultsContainer}>
+                  {isSearching ? (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator size="small" color="#366732" />
+                      <Text style={styles.loadingText}>Searching...</Text>
+                    </View>
+                  ) : searchResults.length > 0 ? (
+                    <FlatList
+                      data={searchResults}
+                      keyExtractor={(item) => item.id}
+                      renderItem={({ item }) => (
                         <TouchableOpacity 
-                          style={styles.callButton}
-                          onPress={() => handleCall(item.phoneNumber)}
+                          style={styles.searchResultItem}
+                          onPress={() => selectResident(item)}
                         >
-                          <Icon name="phone" size={20} color="#366732" />
+                          {item.profileImageUrl ? (
+                            <Image 
+                              source={{ uri: item.profileImageUrl }} 
+                              style={styles.profileImage} 
+                            />
+                          ) : (
+                            <View style={[styles.profileImage, styles.profilePlaceholder]}>
+                              <Icon name="account" size={20} color="#fff" />
+                            </View>
+                          )}
+                          
+                          <View style={styles.residentInfo}>
+                            <Text style={styles.residentName}>{item.name}</Text>
+                            <Text style={styles.residentDetails}>
+                              Apt: {item.apartmentId} • {item.phoneNumber}
+                            </Text>
+                            {item.occupancyStatus && (
+                              <Text style={styles.occupancyStatus}>
+                                {item.occupancyStatus}
+                              </Text>
+                            )}
+                          </View>
+                          
+                          {item.phoneNumber && (
+                            <TouchableOpacity 
+                              style={styles.callButton}
+                              onPress={() => handleCall(item.phoneNumber)}
+                            >
+                              <Icon name="phone" size={20} color="#366732" />
+                            </TouchableOpacity>
+                          )}
                         </TouchableOpacity>
                       )}
-                    </TouchableOpacity>
+                      style={styles.resultsList}
+                      nestedScrollEnabled={true}
+                      keyboardShouldPersistTaps="handled"
+                    />
+                  ) : (
+                    <Text style={styles.noResultsText}>
+                      No residents found matching "{searchQuery}"
+                    </Text>
                   )}
-                  style={styles.resultsList}
-                  nestedScrollEnabled={true}
-                />
-              ) : (
-                <Text style={styles.noResultsText}>
-                  No residents found matching "{searchQuery}"
-                </Text>
+                </View>
               )}
             </View>
+
+            {/* Visitor Information */}
+            <View style={styles.section}>
+              <Text style={styles.label}>Visitor Name*</Text>
+              <TextInput
+                style={styles.input}
+                value={visitorName}
+                onChangeText={setVisitorName}
+                placeholder="Enter visitor's full name"
+                returnKeyType="next"
+                autoCapitalize="words"
+              />
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.label}>Visitor Phone*</Text>
+              <TextInput
+                style={styles.input}
+                value={visitorPhone}
+                onChangeText={setVisitorPhone}
+                placeholder="Enter visitor's phone number"
+                keyboardType="phone-pad"
+                returnKeyType="next"
+              />
+            </View>
+
+            {/* Visit Details */}
+            <View style={styles.section}>
+              <Text style={styles.label}>Purpose of Visit*</Text>
+              <TextInput
+                style={styles.input}
+                value={purpose}
+                onChangeText={setPurpose}
+                placeholder="e.g. Delivery, Guest Visit, Service"
+                returnKeyType="next"
+                autoCapitalize="sentences"
+              />
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.label}>Vehicle Number (if any)</Text>
+              <TextInput
+                style={styles.input}
+                value={vehicleNumber}
+                onChangeText={setVehicleNumber}
+                placeholder="Enter vehicle registration number"
+                returnKeyType="next"
+                autoCapitalize="characters"
+              />
+            </View>
+
+            {/* Date/Time Selection */}
+            <View style={styles.section}>
+              <Text style={styles.label}>Visit Time*</Text>
+              
+              <View style={styles.timeRow}>
+                <View style={styles.timeInputContainer}>
+                  <Text style={styles.timeLabel}>From:</Text>
+                  <TouchableOpacity 
+                    style={styles.timeInput}
+                    onPress={() => {
+                      dismissKeyboard();
+                      setShowFromPicker(true);
+                    }}
+                  >
+                    <Text style={styles.timeText}>{fromDate.toLocaleString()}</Text>
+                    <Icon name="calendar-clock" size={20} color="#666"/>
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.timeInputContainer}>
+                  <Text style={styles.timeLabel}>To:</Text>
+                  <TouchableOpacity 
+                    style={styles.timeInput}
+                    onPress={() => {
+                      dismissKeyboard();
+                      setShowToPicker(true);
+                    }}
+                  >
+                    <Text style={styles.timeText}>{toDate.toLocaleString()}</Text>
+                    <Icon name="calendar-clock" size={20} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* Additional Notes */}
+            <View style={styles.section}>
+              <Text style={styles.label}>Additional Notes</Text>
+              <TextInput
+                style={[styles.input, styles.notesInput]}
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Any special instructions"
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                returnKeyType="done"
+                autoCapitalize="sentences"
+              />
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity 
+              style={styles.submitButton}
+              onPress={handleSubmit}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitButtonText}>Create Gate Pass Request</Text>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+
+          {/* Date/Time Pickers */}
+          {showFromPicker && (
+            <DateTimePicker
+              value={fromDate}
+              mode="datetime"
+              display="default"
+              onChange={handleFromDateChange}
+              minimumDate={new Date()}
+            />
           )}
-        </View>
-
-        {/* Visitor Information */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Visitor Name*</Text>
-          <TextInput
-            style={styles.input}
-            value={visitorName}
-            onChangeText={setVisitorName}
-            placeholder="Enter visitor's full name"
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Visitor Phone*</Text>
-          <TextInput
-            style={styles.input}
-            value={visitorPhone}
-            onChangeText={setVisitorPhone}
-            placeholder="Enter visitor's phone number"
-            keyboardType="phone-pad"
-          />
-        </View>
-
-        {/* Visit Details */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Purpose of Visit*</Text>
-          <TextInput
-            style={styles.input}
-            value={purpose}
-            onChangeText={setPurpose}
-            placeholder="e.g. Delivery, Guest Visit, Service"
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Vehicle Number (if any)</Text>
-          <TextInput
-            style={styles.input}
-            value={vehicleNumber}
-            onChangeText={setVehicleNumber}
-            placeholder="Enter vehicle registration number"
-          />
-        </View>
-
-        {/* Date/Time Selection */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Visit Time*</Text>
           
-          <View style={styles.timeRow}>
-            <View style={styles.timeInputContainer}>
-              <Text style={styles.timeLabel}>From:</Text>
-              <TouchableOpacity 
-                style={styles.timeInput}
-                onPress={() => setShowFromPicker(true)}
-              >
-                <Text style={styles.timeText}>{fromDate.toLocaleString()}</Text>
-                <Icon name="calendar-clock" size={20} color="#666"/>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.timeInputContainer}>
-              <Text style={styles.timeLabel}>To:</Text>
-              <TouchableOpacity 
-                style={styles.timeInput}
-                onPress={() => setShowToPicker(true)}
-              >
-                <Text style={styles.timeText}>{toDate.toLocaleString()}</Text>
-                <Icon name="calendar-clock" size={20} color="#666" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        {/* Additional Notes */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Additional Notes</Text>
-          <TextInput
-            style={[styles.input, { height: 80 }]}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Any special instructions"
-            multiline
-          />
-        </View>
-
-        {/* Submit Button */}
-        <TouchableOpacity 
-          style={styles.submitButton}
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.submitButtonText}>Create Gate Pass Request</Text>
+          {showToPicker && (
+            <DateTimePicker
+              value={toDate}
+              mode="datetime"
+              display="default"
+              onChange={handleToDateChange}
+              minimumDate={fromDate}
+            />
           )}
-        </TouchableOpacity>
-      </ScrollView>
-
-      {/* Date/Time Pickers */}
-      {showFromPicker && (
-        <DateTimePicker
-          value={fromDate}
-          mode="datetime"
-          display="default"
-          onChange={handleFromDateChange}
-          minimumDate={new Date()}
-        />
-      )}
-      
-      {showToPicker && (
-        <DateTimePicker
-          value={toDate}
-          mode="datetime"
-          display="default"
-          onChange={handleToDateChange}
-          minimumDate={fromDate}
-        />
-      )}
-    </View>
+        </View>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -495,6 +570,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 16,
     elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
   },
   label: {
     fontSize: 14,
@@ -508,6 +590,11 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 12,
     fontSize: 16,
+    backgroundColor: '#fff',
+  },
+  notesInput: {
+    height: 80,
+    paddingTop: 12,
   },
   searchContainer: {
     position: 'relative',
@@ -524,7 +611,7 @@ const styles = StyleSheet.create({
   searchIcon: {
     position: 'absolute',
     right: 12,
-    top: 22,
+    top: 12,
   },
   selectedResidentContainer: {
     flexDirection: 'row',
@@ -630,7 +717,8 @@ const styles = StyleSheet.create({
     padding: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',  
+    alignItems: 'center',
+    backgroundColor: '#fff',
   },
   timeText: {
     flex: 1,
@@ -645,6 +733,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   submitButtonText: {
     color: '#fff',

@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Image, BackHandler,Alert} from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
 import { useSelector } from 'react-redux';
 import firestore from '@react-native-firebase/firestore';
+import NotificationService from '../../components/ NotificationService';
 
 const AdminDashboard = () => {
   const navigation = useNavigation();
@@ -111,6 +113,25 @@ const AdminDashboard = () => {
     };
   
   }, [communityData?.id]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      NotificationService.requestUserPermission();
+      NotificationService.getFCMToken(userData?.id, communityData?.id);
+      NotificationService.handleForegroundNotifications();
+      NotificationService.handleBackgroundNotifications();
+      NotificationService.handleKilledStateNotifications();
+  
+      // Set up notification listeners
+      async function setupListeners() {
+        const unsubscribeForeground = await NotificationService.onNotificationEvent();
+        const unsubscribeBackground = await NotificationService.onBackgroundEvent();
+      }
+      setupListeners();
+    }, 500);
+  
+    return () => clearTimeout(timeout);
+  }, [userData?.id, communityData?.id]);
   
 
 
@@ -362,6 +383,7 @@ const AdminDashboard = () => {
         </View>
 
         <TouchableOpacity style={styles.switchButton} onPress={() => navigation.navigate('ResidentDashboard')}>
+          <FontAwesome5 name="house-user" size={16} color="#366732" />
           <Text style={styles.switchButtonText}>Switch to Resident</Text>
         </TouchableOpacity>
       </View>
@@ -451,7 +473,9 @@ const styles = StyleSheet.create({
     padding: 8, 
     borderRadius: 6,
     alignSelf: 'flex-end',
-    marginTop:-20
+    marginTop:-5,
+    flexDirection:'row',
+    gap:5
   },
   switchButtonText: {
     color: '#366732',
