@@ -320,3 +320,4 @@ exports.sendNotificationToSecurity = functions.https.onCall(async (data, context
     );
   }
 });
+

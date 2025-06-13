@@ -9,6 +9,7 @@ import { StatusBar, ActivityIndicator, View } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import initializeFirebase from '../services/firebase';
 import { navigationRef } from '../components/NavigationService';
+import WelcomeAnnimation from '../components/WelcomeAnnimation';
 
 // Initialize Firebase before Entering into the Application
 initializeFirebase();
@@ -97,7 +98,8 @@ export default function AppNavigator() {
     // show loading screen while fetching async storage data
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#366732" />
+        {/* <ActivityIndicator size="large" color="#366732" /> */}
+        <WelcomeAnnimation/>
       </View>
     );
   }

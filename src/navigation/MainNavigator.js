@@ -25,6 +25,16 @@ import NewGatePassRequestScreen from '../screens/Security/GatePassManagement/New
 import AllGatePassRequestsScreen from '../screens/Security/AllGatePassRequestsScreen';
 import VisitorsLogScreen from '../screens/Security/VisitorsLogScreen';
 
+//Notice Board
+import AddNoticeScreen from '../screens/Admin/ AddNotice/ AddNoticeScreen';
+import EditNoticeScreen from '../screens/Admin/ AddNotice/EditNoticeScreen';
+
+//UserManagement
+import EditUserScreen from '../screens/Admin/UserManagement/ EditUserScreen';
+import AddUserScreen from '../screens/Admin/UserManagement/AddUserScreen';
+import AllUsersScreen from '../screens/Admin/UserManagement/AllUsersScreen';
+
+
 const Stack = createStackNavigator();
 
 export default function MainNavigator({ role, userData, communityData }) {
@@ -60,6 +70,14 @@ export default function MainNavigator({ role, userData, communityData }) {
       <Stack.Screen name="NewGatePassRequestScreen" component={NewGatePassRequestScreen} options={{ headerShown: false }} />
       <Stack.Screen name="AllGatePassRequestsScreen" component={AllGatePassRequestsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="VisitorsLogScreen" component={VisitorsLogScreen} options={{ headerShown: false }} />
+
+      <Stack.Screen name="AddNoticeScreen" component={AddNoticeScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="EditNoticeScreen" component={EditNoticeScreen} options={{ headerShown: false }} />
+
+      <Stack.Screen name="EditUserScreen" component={EditUserScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="AddUserScreen" component={AddUserScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="AllUsersScreen" component={AllUsersScreen} options={{ headerShown: false }} />
+    
     </Stack.Navigator>
   );
 };

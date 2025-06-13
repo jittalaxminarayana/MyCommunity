@@ -14,33 +14,36 @@ const NoticeBoard = ({navigation}) => {
   console.log("communityData:", communityData.id)
 
   useEffect(() => {
-    const unsubscribe = firebase.firestore()
-    .collection('communities')
-    .doc(communityData.id)
-    .collection('notices')
-    .orderBy('createdAt', 'desc')
-    .onSnapshot(snapshot => {
-      const noticeList = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          createdAtFormatted: data.createdAt
-            ? formatDistanceToNow(data.createdAt.toDate(), { addSuffix: true })
-            : 'Unknown'
-        };
-      });
-      console.log("Ordered notices:", noticeList);
-      setNotices(noticeList);
-      setLoading(false);
-    }, error => {
-      console.error('Firestore error:', error);
-      setLoading(false);
-    });
+    const currentDate = new Date();
     
+    const unsubscribe = firebase.firestore()
+      .collection('communities')
+      .doc(communityData.id)
+      .collection('notices')
+      .where('expireAt', '>', currentDate) // Only get notices that haven't expired
+      .orderBy('expireAt', 'asc') // Optionally sort by expiration date
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(snapshot => {
+        const noticeList = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAtFormatted: data.createdAt
+              ? formatDistanceToNow(data.createdAt.toDate(), { addSuffix: true })
+              : 'Unknown'
+          };
+        });
+        setNotices(noticeList);
+        setLoading(false);
+      }, error => {
+        console.error('Firestore error:', error);
+        setLoading(false);
+      });
+      
     return () => unsubscribe();
   }, [communityData.id]);
-
+  
   const filterNotices = () => {
     if (selectedCategory === 'all') {
       return notices;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Image, BackHandler,Alert} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Image, BackHandler, Alert } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
@@ -22,9 +22,17 @@ const AdminDashboard = () => {
     pendingPayments: 0
   });
   const [emergencyContacts, setEmergencyContacts] = useState([]);
-  console.log("emergencyContacts", emergencyContacts)
   const [homeStoreCategories, setHomeStoreCategories] = useState([]);
   const [bookingsCategories, setBookingsCategories] = useState([]);
+  const [notices, setNotices] = useState([]);
+  const [communityUsers, setCommunityUsers] = useState([]);
+  const [userStats, setUserStats] = useState({
+    totalUsers: 0,
+    approvedUsers: 0,
+    pendingUsers: 0
+  });
+
+  console.log("emergencyContacts", emergencyContacts)
 
   useEffect(() => {
     if (!communityData?.id) return;
@@ -60,11 +68,44 @@ const AdminDashboard = () => {
         }));
         setHomeStoreCategories(homeCategories);
       });
+
+    // Subscribe to notices
+    const unsubscribeNotices = communityRef
+      .collection('notices')
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(snapshot => {
+        const noticesData = snapshot.docs.map(doc => ({
+          id2: doc.id,
+          ...doc.data()
+        }));
+        setNotices(noticesData);
+      });
+
+    // Subscribe to community users
+    const unsubscribeUsers = communityRef
+      .collection('users')
+      .onSnapshot(snapshot => {
+        const usersData = snapshot.docs.map(doc => ({
+          id2: doc.id,
+          ...doc.data()
+        }));
+        setCommunityUsers(usersData);
+        
+        // Calculate user stats
+        const approved = usersData.filter(user => user.approved === true).length;
+        const pending = usersData.filter(user => user.approved === false).length;
+        
+        setUserStats({
+          totalUsers: usersData.length,
+          approvedUsers: approved,
+          pendingUsers: pending
+        });
+      });
   
     const unsubscribeMaintenanceDues = communityRef
       .collection('maintenanceDues')
       .onSnapshot(async maintenanceDuesSnap => {
-        const maintenancePaymentsSnap = await communityRef.collection('payments').get(); // still using get() if payments is not needed to be real-time
+        const maintenancePaymentsSnap = await communityRef.collection('payments').get();
   
         const blockData = {};
         let totalPending = 0;
@@ -110,6 +151,8 @@ const AdminDashboard = () => {
       unsubscribeBookings();
       unsubscribeHomeStore();
       unsubscribeMaintenanceDues();
+      unsubscribeNotices();
+      unsubscribeUsers();
     };
   
   }, [communityData?.id]);
@@ -132,8 +175,6 @@ const AdminDashboard = () => {
   
     return () => clearTimeout(timeout);
   }, [userData?.id, communityData?.id]);
-  
-
 
   useFocusEffect(
     React.useCallback(() => {
@@ -353,6 +394,232 @@ const AdminDashboard = () => {
     </View>
   );
 
+  const renderNoticeboardSection = () => (
+    <View style={styles.sectionContainer}>
+      <Text style={styles.sectionTitle}>Community Noticeboard</Text>
+      
+      <TouchableOpacity 
+        style={styles.addButton}
+        onPress={() => navigation.navigate('AddNoticeScreen')}
+      >
+        <Icon name="plus" size={20} color="#fff" />
+        <Text style={styles.addButtonText}>Post Notice</Text>
+      </TouchableOpacity>
+  
+      {loading ? (
+        <ActivityIndicator size="large" color="#366732" style={styles.loader} />
+      ) : notices.length > 0 ? (
+        <FlatList
+          data={notices}
+          keyExtractor={(item) => item.id2}
+          renderItem={({ item }) => (
+            <View style={styles.noticeCard}>
+              <View style={styles.noticeHeader}>
+                <View style={styles.noticeCategoryBadge}>
+                  <Icon 
+                    name={
+                      item.category === 'event' ? 'calendar-star' :
+                      item.category === 'announcement' ? 'bullhorn' :
+                      item.category === 'emergency' ? 'alert-circle' :
+                      'information'
+                    }
+                    size={16} 
+                    color="#fff" 
+                  />
+                  <Text style={styles.noticeCategoryText}>
+                    {item.category?.toUpperCase() || 'NOTICE'}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.noticeAction}
+                  onPress={() => navigation.navigate('EditNoticeScreen', { noticeId: item.id2 })}
+                >
+                  <Icon name="dots-vertical" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={styles.noticeTitle}>{item.title}</Text>
+              <Text style={styles.noticeContent} numberOfLines={3}>
+                {item.content}
+              </Text>
+              
+              {/* Display images if attachments exist */}
+              {item.attachments && item.attachments.length > 0 && (
+                <View style={styles.noticeImagesContainer}>
+                  {item.attachments.length === 1 ? (
+                    // Single image - full width
+                    <TouchableOpacity 
+                      style={styles.singleImageContainer}
+                      // onPress={() => openImageViewer(item.attachments, 0)}
+                    >
+                      <Image 
+                        source={{ uri: item.attachments[0] }} 
+                        style={styles.singleNoticeImage}
+                        resizeMode="cover"
+                      />
+                    </TouchableOpacity>
+                  ) : item.attachments.length === 2 ? (
+                    // Two images - side by side
+                    <View style={styles.doubleImageContainer}>
+                      {item.attachments.map((imageUrl, index) => (
+                        <TouchableOpacity 
+                          key={index}
+                          style={styles.doubleImageWrapper}
+                          onPress={() => openImageViewer(item.attachments, index)}
+                        >
+                          <Image 
+                            source={{ uri: imageUrl }} 
+                            style={styles.doubleNoticeImage}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : (
+                    // Multiple images - grid layout
+                    <View style={styles.multipleImagesContainer}>
+                      {item.attachments.slice(0, 3).map((imageUrl, index) => (
+                        <TouchableOpacity 
+                          key={index}
+                          style={[
+                            styles.multipleImageWrapper,
+                            index === 2 && item.attachments.length > 3 && styles.lastImageWrapper
+                          ]}
+                          onPress={() => openImageViewer(item.attachments, index)}
+                        >
+                          <Image 
+                            source={{ uri: imageUrl }} 
+                            style={styles.multipleNoticeImage}
+                            resizeMode="cover"
+                          />
+                          {index === 2 && item.attachments.length > 3 && (
+                            <View style={styles.moreImagesOverlay}>
+                              <Text style={styles.moreImagesText}>
+                                +{item.attachments.length - 3}
+                              </Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+              
+              <View style={styles.noticeFooter}>
+                <Text style={styles.noticeDate}>
+                  {item.createdAt ? new Date(item.createdAt.seconds * 1000).toLocaleDateString() : 'No date'}
+                </Text>
+                {item.expireAt && (
+                  <Text style={styles.noticeExpiry}>
+                    Expires: {new Date(item.expireAt.seconds * 1000).toLocaleDateString()}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+          scrollEnabled={false}
+          nestedScrollEnabled={true}
+        />
+      ) : (
+        <Text style={styles.noDataText}>No notices posted yet</Text>
+      )}
+    </View>
+  );
+
+  const renderUserManagementSection = () => (
+    <View style={styles.sectionContainer}>
+      <Text style={styles.sectionTitle}>User Management</Text>
+      
+      <View style={styles.userStatsCard}>
+        <View style={styles.userStatItem}>
+          <Text style={styles.userStatNumber}>{userStats.totalUsers}</Text>
+          <Text style={styles.userStatLabel}>Total Members</Text>
+        </View>
+        <View style={styles.userStatItem}>
+          <Text style={[styles.userStatNumber, { color: '#4CAF50' }]}>
+            {communityUsers.filter(u => u.role === 'Resident').length}
+          </Text>
+          <Text style={styles.userStatLabel}>Residents</Text>
+        </View>
+        <View style={styles.userStatItem}>
+          <Text style={[styles.userStatNumber, { color: '#ff751a' }]}>
+            {communityUsers.filter(u => u.role === 'Security').length}
+          </Text>
+          <Text style={styles.userStatLabel}>Security</Text>
+        </View>
+        <View style={styles.userStatItem}>
+          <Text style={[styles.userStatNumber, { color: '#808080' }]}>
+            {communityUsers.filter(u => u.role === 'Admin').length}
+          </Text>
+          <Text style={styles.userStatLabel}>Admins</Text>
+        </View>
+      </View>
+
+      <TouchableOpacity 
+        style={styles.addButton}
+        onPress={() => navigation.navigate('AddUserScreen')}
+      >
+        <Icon name="plus" size={20} color="#fff" />
+        <Text style={styles.addButtonText}>Add User</Text>
+      </TouchableOpacity>
+
+      {loading ? (
+        <ActivityIndicator size="large" color="#366732" style={styles.loader} />
+      ) : communityUsers.length > 0 ? (
+        <>
+          <FlatList
+            data={communityUsers.slice(0, 5)}
+            keyExtractor={(item) => item.id2}
+            renderItem={({ item }) => (
+              <View style={styles.userCard}>
+                <Image
+                  source={item.profileImageUrl ? { uri: item.profileImageUrl } : require('../../../assets/community.png')}
+                  style={styles.userAvatar}
+                />
+                <View style={styles.userInfo}>
+                  <Text style={styles.userName}>{item.name}</Text>
+                  <Text style={styles.userApartment}>{item.apartmentId}</Text>
+                  <Text style={styles.userRole}>{item.role} • {item.occupancyStatus}</Text>
+                </View>
+                <View style={styles.userStatus}>
+                  <View style={[
+                    styles.statusBadge, 
+                    { backgroundColor: item.approved ? '#4CAF50' : '#FF5722' }
+                  ]}>
+                    <Text style={styles.statusText}>
+                      {item.approved ? 'Approved' : 'Pending'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.userAction}
+                    onPress={() => navigation.navigate('EditUserScreen', { userId: item.id2 })}
+                  >
+                    <Icon name="dots-vertical" size={20} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            scrollEnabled={false}
+            nestedScrollEnabled={true}
+          />
+          
+          {communityUsers.length > 5 && (
+            <TouchableOpacity 
+              style={styles.viewAllButton}
+              onPress={() => navigation.navigate('AllUsersScreen')}
+            >
+              <Text style={styles.viewAllButtonText}>View All Users</Text>
+              <Icon name="chevron-right" size={20} color="#366732" />
+            </TouchableOpacity>
+          )}
+        </>
+      ) : (
+        <Text style={styles.noDataText}>No users found</Text>
+      )}
+    </View>
+  );
+
   // Create data structure for main FlatList based on active section
   const getSectionData = () => {
     if (activeSection === 'maintenance') {
@@ -363,6 +630,10 @@ const AdminDashboard = () => {
       return [{ id: 'store', component: renderHomeStoreSection }];
     } else if (activeSection === 'bookings') {
       return [{ id: 'bookings', component: renderBookingsSection }];
+    } else if (activeSection === 'noticeboard') {
+      return [{ id: 'noticeboard', component: renderNoticeboardSection }];
+    } else if (activeSection === 'users') {
+      return [{ id: 'users', component: renderUserManagementSection }];
     }
     return [];
   };
@@ -371,13 +642,15 @@ const AdminDashboard = () => {
     <View style={styles.container}>
       {/* Header with Community Info and Switch Button */}
       <View style={styles.header}>
-        <View style={styles.userInfo}>
+        <View style={styles.userInfo2}>
           <Image
             source={userData?.photoURL ? { uri: userData.photoURL } : require('../../../assets/community.png')}
             style={styles.userAvatar}
           />
           <View style={styles.userTextContainer}>
-            <Text style={styles.headerTitle}>{communityData?.name || 'Community'} Admin</Text>
+            <Text style={styles.headerTitle}>
+              {`${(communityData?.name?.split(' ').slice(0, 2).join(' ') || 'Community')} Admin`}
+            </Text>
             <Text style={styles.headerSubtitle}>{userData?.name || 'Admin'}</Text>
           </View>
         </View>
@@ -396,6 +669,22 @@ const AdminDashboard = () => {
         >
           <Icon name="cash" size={24} color={activeSection === 'maintenance' ? '#366732' : '#666'} />
           <Text style={[styles.navText, activeSection === 'maintenance' && styles.activeNavText]}>Maintenance</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.navItem, activeSection === 'noticeboard' && styles.activeNavItem]}
+          onPress={() => setActiveSection('noticeboard')}
+        >
+          <Icon name="bulletin-board" size={24} color={activeSection === 'noticeboard' ? '#366732' : '#666'} />
+          <Text style={[styles.navText, activeSection === 'noticeboard' && styles.activeNavText]}>Noticeboard</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.navItem, activeSection === 'users' && styles.activeNavItem]}
+          onPress={() => setActiveSection('users')}
+        >
+          <Icon name="account-group" size={24} color={activeSection === 'users' ? '#366732' : '#666'} />
+          <Text style={[styles.navText, activeSection === 'users' && styles.activeNavText]}>User Management</Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -421,8 +710,6 @@ const AdminDashboard = () => {
           <Icon name="store" size={24} color={activeSection === 'store' ? '#366732' : '#666'} />
           <Text style={[styles.navText, activeSection === 'store' && styles.activeNavText]}>Home Store</Text>
         </TouchableOpacity>
-  
-        
 
       </ScrollView>
   
@@ -453,7 +740,7 @@ const styles = StyleSheet.create({
     elevation: 3,
     marginBottom: 20,
   },
-  userInfo: {
+  userInfo2: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 15,
@@ -490,7 +777,7 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   headerSubtitle: {
-    fontSize: 14,
+    ontSize: 14,
     color: '#fff',
     opacity: 1,
     marginTop: 2,
@@ -696,16 +983,208 @@ const styles = StyleSheet.create({
     color: '#333',
     flex: 1,
   },
+  // Noticeboard styles
+  noticeCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 10,
+    elevation: 2,
+  },
+  noticeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  noticeCategoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#366732',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  noticeCategoryText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  noticeAction: {
+    padding: 4,
+  },
+  noticeTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  noticeContent: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  noticeFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  noticeDate: {
+    fontSize: 12,
+    color: '#999',
+  },
+  noticeExpiry: {
+    fontSize: 12,
+    color: '#FF5722',
+    fontWeight: '500',
+  },
+  // User Management styles
+  userStatsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 15,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 15,
+    elevation: 2,
+  },
+  userStatItem: {
+    alignItems: 'center',
+  },
+  userStatNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#366732',
+  },
+  userStatLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+  },
+  userCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 2,
+  },
+  userInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  userApartment: {
+    fontSize: 14,
+    color: '#366732',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  userRole: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  userStatus: {
+    alignItems: 'flex-end',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  statusText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  userAction: {
+    padding: 4,
+  },
+  viewAllButton: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 15,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#366732',
+  },
+  viewAllButtonText: {
+    color: '#366732',
+    fontSize: 16,
+    fontWeight: '500',
+    marginRight: 8,
+  },
   loader: {
     marginVertical: 20,
   },
-  noDataText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    fontStyle: 'italic',
-    marginVertical: 20,
-  }
+  noticeImagesContainer: {
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  singleImageContainer: {
+    width: '100%',
+  },
+  singleNoticeImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+  },
+  doubleImageContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  doubleImageWrapper: {
+    width: '49%',
+  },
+  doubleNoticeImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+  },
+  multipleImagesContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  multipleImageWrapper: {
+    width: '32%',
+    position: 'relative',
+  },
+  lastImageWrapper: {
+    position: 'relative',
+  },
+  multipleNoticeImage: {
+    width: '100%',
+    height: 80,
+    borderRadius: 6,
+  },
+  moreImagesOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moreImagesText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 });
 
 export default AdminDashboard;
