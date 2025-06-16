@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Image, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
@@ -16,32 +16,33 @@ const AllUsersScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchUsers = async () => {
-    try {
-      const snapshot = await firestore()
-        .collection('communities')
-        .doc(communityData.id)
-        .collection('users')
-        .get();
-      
-      const usersData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      setUsers(usersData);
-      setFilteredUsers(usersData);
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      Alert.alert('Error', 'Failed to fetch users');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
   useEffect(() => {
-    fetchUsers();
+    // Set up real-time listener
+    const unsubscribe = firestore()
+      .collection('communities')
+      .doc(communityData.id)
+      .collection('users')
+      .onSnapshot(
+        (querySnapshot) => {
+          const usersData = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          setUsers(usersData);
+          setFilteredUsers(usersData);
+          setLoading(false);
+          setRefreshing(false);
+        },
+        (error) => {
+          console.error('Error fetching users:', error);
+          setLoading(false);
+          setRefreshing(false);
+        }
+      );
+
+    // Clean up the listener when component unmounts
+    return () => unsubscribe();
   }, [communityData.id]);
 
   useEffect(() => {
@@ -59,7 +60,9 @@ const AllUsersScreen = () => {
 
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchUsers();
+    // The onSnapshot will automatically update when data changes
+    // so we just need to trigger the refreshing state
+    setTimeout(() => setRefreshing(false), 1000);
   };
 
   const renderUserItem = ({ item }) => (

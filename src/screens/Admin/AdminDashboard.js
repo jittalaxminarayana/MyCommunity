@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Image, BackHandler, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Image, BackHandler, Alert, Modal } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
@@ -11,10 +11,10 @@ const AdminDashboard = () => {
   const navigation = useNavigation();
   const userData = useSelector((state) => state.user.userData);
   const communityData = useSelector((state) => state.user.communityData);
-  
+
   const [activeSection, setActiveSection] = useState('maintenance');
   const [loading, setLoading] = useState(true);
-  
+
   // Data states
   const [maintenanceData, setMaintenanceData] = useState([]);
   const [maintenanceSummary, setMaintenanceSummary] = useState({
@@ -32,13 +32,19 @@ const AdminDashboard = () => {
     pendingUsers: 0
   });
 
-  console.log("emergencyContacts", emergencyContacts)
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  
+  // Modal state for date picker
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [tempMonth, setTempMonth] = useState(selectedMonth);
+  const [tempYear, setTempYear] = useState(selectedYear);
 
   useEffect(() => {
     if (!communityData?.id) return;
-  
+
     const communityRef = firestore().collection('communities').doc(communityData.id);
-  
+
     const unsubscribeEmergency = communityRef
       .collection('emergencyContacts')
       .onSnapshot(snapshot => {
@@ -48,7 +54,7 @@ const AdminDashboard = () => {
         }));
         setEmergencyContacts(contacts);
       });
-  
+
     const unsubscribeBookings = communityRef
       .collection('bookingsCategories')
       .onSnapshot(snapshot => {
@@ -58,7 +64,7 @@ const AdminDashboard = () => {
         }));
         setBookingsCategories(bookings);
       });
-  
+
     const unsubscribeHomeStore = communityRef
       .collection('homeStoreCategories')
       .onSnapshot(snapshot => {
@@ -90,72 +96,83 @@ const AdminDashboard = () => {
           ...doc.data()
         }));
         setCommunityUsers(usersData);
-        
+
         // Calculate user stats
         const approved = usersData.filter(user => user.approved === true).length;
         const pending = usersData.filter(user => user.approved === false).length;
-        
+
         setUserStats({
           totalUsers: usersData.length,
           approvedUsers: approved,
           pendingUsers: pending
         });
       });
-  
-    const unsubscribeMaintenanceDues = communityRef
-      .collection('maintenanceDues')
-      .onSnapshot(async maintenanceDuesSnap => {
-        const maintenancePaymentsSnap = await communityRef.collection('payments').get();
-  
-        const blockData = {};
-        let totalPending = 0;
-        let totalCollected = 0;
-  
-        maintenanceDuesSnap.docs.forEach(doc => {
-          const data = doc.data();
-          const blockId = data.apartmentId.split('-')[0];
-  
-          if (!blockData[blockId]) {
-            blockData[blockId] = {
-              block: blockId,
-              pending: 0,
-              paid: 0,
-              total: 0
-            };
-          }
-  
-          if (data.status === 'pending' || data.status === 'overdue') {
-            blockData[blockId].pending++;
-            totalPending += data.amount;
-          } else if (data.status === 'paid') {
-            blockData[blockId].paid++;
-            totalCollected += data.amount;
-          }
-  
-          blockData[blockId].total++;
-        });
-  
-        const blocks = Object.values(blockData).sort((a, b) => a.block.localeCompare(b.block));
-        setMaintenanceData(blocks);
-  
-        setMaintenanceSummary({
-          totalCollected,
-          pendingPayments: totalPending
-        });
-  
-        setLoading(false);
-      });
-  
+
+      const unsubscribeMaintenanceDues = () => {
+        // Calculate date range for the selected month/year
+        const startDate = new Date(selectedYear, selectedMonth, 1);
+        const endDate = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999);
+      
+        return communityRef.collection('maintenanceDues')
+          .where('createdAt', '>=', startDate)
+          .where('createdAt', '<=', endDate)
+          .onSnapshot(async maintenanceDuesSnap => {
+            const blockData = {};
+            let totalPending = 0;
+            let totalCollected = 0;
+      
+            maintenanceDuesSnap.docs.forEach(doc => {
+              const data = doc.data();
+              const blockId = data.apartmentId.split('-')[0];
+      
+              if (!blockData[blockId]) {
+                blockData[blockId] = {
+                  block: blockId,
+                  pending: 0,
+                  paid: 0,
+                  total: 0,
+                  pendingAmount: 0,
+                  paidAmount: 0
+                };
+              }
+      
+              if (data.status === 'pending' || data.status === 'overdue') {
+                blockData[blockId].pending++;
+                blockData[blockId].pendingAmount += data.amount;
+                totalPending += data.amount;
+              } else if (data.status === 'paid') {
+                blockData[blockId].paid++;
+                blockData[blockId].paidAmount += data.amount;
+                totalCollected += data.amount;
+              }
+      
+              blockData[blockId].total++;
+            });
+      
+            const blocks = Object.values(blockData).sort((a, b) => a.block.localeCompare(b.block));
+            setMaintenanceData(blocks);
+      
+            setMaintenanceSummary({
+              totalCollected,
+              pendingPayments: totalPending
+            });
+      
+            setLoading(false);
+          });
+      };
+
+    const maintenanceUnsubscribe = unsubscribeMaintenanceDues();
+
     return () => {
       unsubscribeEmergency();
       unsubscribeBookings();
       unsubscribeHomeStore();
-      unsubscribeMaintenanceDues();
+      maintenanceUnsubscribe();
       unsubscribeNotices();
       unsubscribeUsers();
     };
-  
-  }, [communityData?.id]);
+
+  }, [communityData?.id, selectedMonth, selectedYear]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -164,7 +181,7 @@ const AdminDashboard = () => {
       NotificationService.handleForegroundNotifications();
       NotificationService.handleBackgroundNotifications();
       NotificationService.handleKilledStateNotifications();
-  
+
       // Set up notification listeners
       async function setupListeners() {
         const unsubscribeForeground = await NotificationService.onNotificationEvent();
@@ -172,7 +189,7 @@ const AdminDashboard = () => {
       }
       setupListeners();
     }, 500);
-  
+
     return () => clearTimeout(timeout);
   }, [userData?.id, communityData?.id]);
 
@@ -203,62 +220,242 @@ const AdminDashboard = () => {
     }, [])
   );
 
-  // Content section components for FlatList
-  const renderMaintenanceSection = () => (
-    <View style={styles.sectionContainer}>
-      <Text style={styles.sectionTitle}>Maintenance Management</Text>
-      
-      {loading ? (
-        <ActivityIndicator size="large" color="#366732" style={styles.loader} />
-      ) : (
-        <>
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Total Collected</Text>
-              <Text style={styles.summaryValue}>₹{maintenanceSummary.totalCollected.toLocaleString()}</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Pending Payments</Text>
-              <Text style={[styles.summaryValue, { color: '#FF5722' }]}>₹{maintenanceSummary.pendingPayments.toLocaleString()}</Text>
+  const handleDateModalConfirm = () => {
+    setSelectedMonth(tempMonth);
+    setSelectedYear(tempYear);
+    setShowDateModal(false);
+  };
+
+  const handleDateModalCancel = () => {
+    setTempMonth(selectedMonth);
+    setTempYear(selectedYear);
+    setShowDateModal(false);
+  };
+
+  const renderMaintenanceSection = () => {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    // Generate recent years (current year and past 5 years)
+    const currentYear = new Date().getFullYear();
+    const years = Array.from({ length: 6 }, (_, i) => currentYear - i);
+
+    return (
+      <View style={styles.sectionContainer}>
+        <Text style={styles.sectionTitle}>Maintenance Management</Text>
+
+        {/* Month/Year Selector */}
+        <View style={styles.dateSelectorContainer}>
+          <View style={styles.dateSelector}>
+            <TouchableOpacity
+              onPress={() => {
+                const prevMonth = selectedMonth - 1;
+                if (prevMonth < 0) {
+                  setSelectedMonth(11);
+                  setSelectedYear(selectedYear - 1);
+                } else {
+                  setSelectedMonth(prevMonth);
+                }
+              }}
+              style={styles.arrowButton}
+            >
+              <Icon name="chevron-left" size={20} color="#366732" />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.monthYearDisplay}
+              onPress={() => {
+                setTempMonth(selectedMonth);
+                setTempYear(selectedYear);
+                setShowDateModal(true);
+              }}
+            >
+              <Text style={styles.monthYearText}>
+                {months[selectedMonth]} {selectedYear}
+              </Text>
+              <Icon name="chevron-down" size={16} color="#366732" style={styles.dropdownIcon} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                const nextMonth = selectedMonth + 1;
+                if (nextMonth > 11) {
+                  setSelectedMonth(0);
+                  setSelectedYear(selectedYear + 1);
+                } else {
+                  setSelectedMonth(nextMonth);
+                }
+              }}
+              style={styles.arrowButton}
+              disabled={selectedMonth === new Date().getMonth() && selectedYear === new Date().getFullYear()}
+            >
+              <Icon
+                name="chevron-right"
+                size={20}
+                color={
+                  selectedMonth === new Date().getMonth() && selectedYear === new Date().getFullYear()
+                    ? '#ccc'
+                    : '#366732'
+                }
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Date Selection Modal */}
+        <Modal
+          visible={showDateModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={handleDateModalCancel}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Month & Year</Text>
+                <TouchableOpacity onPress={handleDateModalCancel}>
+                  <Icon name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalContent}>
+                {/* Year Selection */}
+                <View style={styles.selectorSection}>
+                  <Text style={styles.selectorLabel}>Year</Text>
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.horizontalScroll}
+                  >
+                    {years.map((year) => (
+                      <TouchableOpacity
+                        key={year}
+                        style={[
+                          styles.yearButton,
+                          tempYear === year && styles.selectedYearButton
+                        ]}
+                        onPress={() => setTempYear(year)}
+                      >
+                        <Text style={[
+                          styles.yearButtonText,
+                          tempYear === year && styles.selectedYearButtonText
+                        ]}>
+                          {year}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                {/* Month Selection */}
+                <View style={styles.selectorSection}>
+                  <Text style={styles.selectorLabel}>Month</Text>
+                  <View style={styles.monthGrid}>
+                    {months.map((month, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.monthButton,
+                          tempMonth === index && styles.selectedMonthButton
+                        ]}
+                        onPress={() => setTempMonth(index)}
+                      >
+                        <Text style={[
+                          styles.monthButtonText,
+                          tempMonth === index && styles.selectedMonthButtonText
+                        ]}>
+                          {month.substring(0, 3)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity 
+                  style={styles.cancelButton}
+                  onPress={handleDateModalCancel}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.confirmButton}
+                  onPress={handleDateModalConfirm}
+                >
+                  <Text style={styles.confirmButtonText}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
+        </Modal>
 
-          {maintenanceData.length > 0 ? (
-            <FlatList
-              data={maintenanceData}
-              keyExtractor={(item) => item.block}
-              renderItem={({ item }) => (
-                <View style={styles.blockCard}>
-                  <Text style={styles.blockTitle}>Block {item.block}</Text>
-                  <View style={styles.blockRow}>
-                    <Text>Pending: {item.pending}</Text>
-                    <Text>Paid: {item.paid}</Text>
-                    <Text>Total: {item.total}</Text>
+        {loading ? (
+          <ActivityIndicator size="large" color="#366732" style={styles.loader} />
+        ) : (
+          <>
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Total Collected</Text>
+                <Text style={styles.summaryValue}>
+                  ₹{maintenanceSummary.totalCollected.toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Pending Payments</Text>
+                <Text style={[styles.summaryValue, { color: '#FF5722' }]}>
+                  ₹{maintenanceSummary.pendingPayments.toLocaleString()}
+                </Text>
+              </View>
+            </View>
+
+            {maintenanceData.length > 0 ? (
+              <FlatList
+                data={maintenanceData}
+                keyExtractor={(item) => item.block}
+                renderItem={({ item }) => (
+                  <View style={styles.blockCard}>
+                    <Text style={styles.blockTitle}>Block {item.block}</Text>
+                    <View style={styles.blockRow}>
+                      <Text>Pending: {item.pending}</Text>
+                      <Text>Paid: {item.paid}</Text>
+                      <Text>Total: {item.total}</Text>
+                    </View>
+                    <View style={styles.amountRow}>
+                      <Text>Pending Amt: ₹{item.pendingAmount?.toLocaleString() || 0}</Text>
+                      <Text>Paid Amt: ₹{item.paidAmount?.toLocaleString() || 0}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.viewButton}
+                      onPress={() => navigation.navigate('MaintenanceDetailsScreen', {
+                        block: item.block,
+                        month: selectedMonth,
+                        year: selectedYear
+                      })}
+                    >
+                      <Text style={styles.viewButtonText}>View Details</Text>
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity 
-                    style={styles.viewButton}
-                    onPress={() => navigation.navigate('MaintenanceDetailsScreen', { block: item.block })}
-                  >
-                    <Text style={styles.viewButtonText}>View Details</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              scrollEnabled={false}
-              nestedScrollEnabled={true}
-            />
-          ) : (
-            <Text style={styles.noDataText}>No maintenance data available</Text>
-          )}
-        </>
-      )}
-    </View>
-  );
+                )}
+                scrollEnabled={false}
+                nestedScrollEnabled={true}
+              />
+            ) : (
+              <Text style={styles.noDataText}>No maintenance data available for {months[selectedMonth]} {selectedYear}</Text>
+            )}
+          </>
+        )}
+      </View>
+    );
+  };
 
   const renderEmergencyContactsSection = () => (
     <View style={styles.sectionContainer}>
       <Text style={styles.sectionTitle}>Emergency Contacts</Text>
-      
-      <TouchableOpacity 
+
+      <TouchableOpacity
         style={styles.addButton}
         onPress={() => navigation.navigate('AddEmergencyContactScreen')}
       >
@@ -275,24 +472,24 @@ const AdminDashboard = () => {
           renderItem={({ item }) => (
             <View style={styles.contactCard}>
               <View style={styles.contactIcon}>
-                <Icon 
+                <Icon
                   name={
                     item.category === 'fire' ? 'fire-truck' :
-                    item.category === 'police' ? 'police-badge' :
-                    item.category === 'medical' ? 'ambulance' :
-                    item.category === 'plumbing' ? 'water-pump' :
-                    item.category === 'electrical' ? 'flash' :
-                    'phone-alert'
-                  } 
-                  size={24} 
-                  color="#366732" 
+                      item.category === 'police' ? 'police-badge' :
+                        item.category === 'medical' ? 'ambulance' :
+                          item.category === 'plumbing' ? 'water-pump' :
+                            item.category === 'electrical' ? 'flash' :
+                              'phone-alert'
+                  }
+                  size={24}
+                  color="#366732"
                 />
               </View>
               <View style={styles.contactInfo}>
                 <Text style={styles.contactName}>{item.name}</Text>
                 <Text style={styles.contactNumber}>{item.number}</Text>
               </View>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.contactAction}
                 onPress={() => navigation.navigate('EditEmergencyContactScreen', { contactId: item.id2 })}
               >
@@ -312,8 +509,8 @@ const AdminDashboard = () => {
   const renderHomeStoreSection = () => (
     <View style={styles.sectionContainer}>
       <Text style={styles.sectionTitle}>Home Store Services</Text>
-      
-      <TouchableOpacity 
+
+      <TouchableOpacity
         style={styles.addButton}
         onPress={() => navigation.navigate('AddHomeStoreServiceScreen')}
       >
@@ -326,16 +523,16 @@ const AdminDashboard = () => {
       ) : homeStoreCategories.length > 0 ? (
         <View style={styles.serviceGrid}>
           {homeStoreCategories.map((category) => (
-            <TouchableOpacity 
+            <TouchableOpacity
               key={category.id2}
               style={styles.serviceCard}
               onPress={() => navigation.navigate('ServiceDetailsScreen', { serviceId: category.id2 })}
             >
               <View style={styles.serviceIcon}>
-                <Icon 
-                  name={category.icon || 'store'} 
-                  size={30} 
-                  color="#366732" 
+                <Icon
+                  name={category.icon || 'store'}
+                  size={30}
+                  color="#366732"
                 />
               </View>
               <Text style={styles.serviceName}>{category.name}</Text>
@@ -354,8 +551,8 @@ const AdminDashboard = () => {
   const renderBookingsSection = () => (
     <View style={styles.sectionContainer}>
       <Text style={styles.sectionTitle}>Booking Categories</Text>
-      
-      <TouchableOpacity 
+
+      <TouchableOpacity
         style={styles.addButton}
         onPress={() => navigation.navigate('AddBookingCategoryScreen')}
       >
@@ -370,15 +567,15 @@ const AdminDashboard = () => {
           data={bookingsCategories}
           keyExtractor={(item) => item.id2}
           renderItem={({ item }) => (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.bookingCard}
               onPress={() => navigation.navigate('BookingCategoryDetailsScreen', { categoryId: item.id2 })}
             >
               <View style={styles.bookingIcon}>
-                <Icon 
-                  name={item.icon || 'calendar-blank'} 
-                  size={24} 
-                  color="#366732" 
+                <Icon
+                  name={item.icon || 'calendar-blank'}
+                  size={24}
+                  color="#366732"
                 />
               </View>
               <Text style={styles.bookingName}>{item.name}</Text>
@@ -397,15 +594,15 @@ const AdminDashboard = () => {
   const renderNoticeboardSection = () => (
     <View style={styles.sectionContainer}>
       <Text style={styles.sectionTitle}>Community Noticeboard</Text>
-      
-      <TouchableOpacity 
+
+      <TouchableOpacity
         style={styles.addButton}
         onPress={() => navigation.navigate('AddNoticeScreen')}
       >
         <Icon name="plus" size={20} color="#fff" />
         <Text style={styles.addButtonText}>Post Notice</Text>
       </TouchableOpacity>
-  
+
       {loading ? (
         <ActivityIndicator size="large" color="#366732" style={styles.loader} />
       ) : notices.length > 0 ? (
@@ -416,44 +613,44 @@ const AdminDashboard = () => {
             <View style={styles.noticeCard}>
               <View style={styles.noticeHeader}>
                 <View style={styles.noticeCategoryBadge}>
-                  <Icon 
+                  <Icon
                     name={
                       item.category === 'event' ? 'calendar-star' :
-                      item.category === 'announcement' ? 'bullhorn' :
-                      item.category === 'emergency' ? 'alert-circle' :
-                      'information'
+                        item.category === 'announcement' ? 'bullhorn' :
+                          item.category === 'emergency' ? 'alert-circle' :
+                            'information'
                     }
-                    size={16} 
-                    color="#fff" 
+                    size={16}
+                    color="#fff"
                   />
                   <Text style={styles.noticeCategoryText}>
                     {item.category?.toUpperCase() || 'NOTICE'}
                   </Text>
                 </View>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.noticeAction}
                   onPress={() => navigation.navigate('EditNoticeScreen', { noticeId: item.id2 })}
                 >
                   <Icon name="dots-vertical" size={20} color="#666" />
                 </TouchableOpacity>
               </View>
-              
+
               <Text style={styles.noticeTitle}>{item.title}</Text>
               <Text style={styles.noticeContent} numberOfLines={3}>
                 {item.content}
               </Text>
-              
+
               {/* Display images if attachments exist */}
               {item.attachments && item.attachments.length > 0 && (
                 <View style={styles.noticeImagesContainer}>
                   {item.attachments.length === 1 ? (
                     // Single image - full width
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={styles.singleImageContainer}
-                      // onPress={() => openImageViewer(item.attachments, 0)}
+                    // onPress={() => openImageViewer(item.attachments, 0)}
                     >
-                      <Image 
-                        source={{ uri: item.attachments[0] }} 
+                      <Image
+                        source={{ uri: item.attachments[0] }}
                         style={styles.singleNoticeImage}
                         resizeMode="cover"
                       />
@@ -462,13 +659,13 @@ const AdminDashboard = () => {
                     // Two images - side by side
                     <View style={styles.doubleImageContainer}>
                       {item.attachments.map((imageUrl, index) => (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           key={index}
                           style={styles.doubleImageWrapper}
                           onPress={() => openImageViewer(item.attachments, index)}
                         >
-                          <Image 
-                            source={{ uri: imageUrl }} 
+                          <Image
+                            source={{ uri: imageUrl }}
                             style={styles.doubleNoticeImage}
                             resizeMode="cover"
                           />
@@ -479,7 +676,7 @@ const AdminDashboard = () => {
                     // Multiple images - grid layout
                     <View style={styles.multipleImagesContainer}>
                       {item.attachments.slice(0, 3).map((imageUrl, index) => (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           key={index}
                           style={[
                             styles.multipleImageWrapper,
@@ -487,8 +684,8 @@ const AdminDashboard = () => {
                           ]}
                           onPress={() => openImageViewer(item.attachments, index)}
                         >
-                          <Image 
-                            source={{ uri: imageUrl }} 
+                          <Image
+                            source={{ uri: imageUrl }}
                             style={styles.multipleNoticeImage}
                             resizeMode="cover"
                           />
@@ -505,7 +702,7 @@ const AdminDashboard = () => {
                   )}
                 </View>
               )}
-              
+
               <View style={styles.noticeFooter}>
                 <Text style={styles.noticeDate}>
                   {item.createdAt ? new Date(item.createdAt.seconds * 1000).toLocaleDateString() : 'No date'}
@@ -530,7 +727,7 @@ const AdminDashboard = () => {
   const renderUserManagementSection = () => (
     <View style={styles.sectionContainer}>
       <Text style={styles.sectionTitle}>User Management</Text>
-      
+
       <View style={styles.userStatsCard}>
         <View style={styles.userStatItem}>
           <Text style={styles.userStatNumber}>{userStats.totalUsers}</Text>
@@ -556,7 +753,7 @@ const AdminDashboard = () => {
         </View>
       </View>
 
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.addButton}
         onPress={() => navigation.navigate('AddUserScreen')}
       >
@@ -584,14 +781,14 @@ const AdminDashboard = () => {
                 </View>
                 <View style={styles.userStatus}>
                   <View style={[
-                    styles.statusBadge, 
+                    styles.statusBadge,
                     { backgroundColor: item.approved ? '#4CAF50' : '#FF5722' }
                   ]}>
                     <Text style={styles.statusText}>
                       {item.approved ? 'Approved' : 'Pending'}
                     </Text>
                   </View>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.userAction}
                     onPress={() => navigation.navigate('EditUserScreen', { userId: item.id2 })}
                   >
@@ -603,9 +800,9 @@ const AdminDashboard = () => {
             scrollEnabled={false}
             nestedScrollEnabled={true}
           />
-          
+
           {communityUsers.length > 5 && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.viewAllButton}
               onPress={() => navigation.navigate('AllUsersScreen')}
             >
@@ -660,10 +857,10 @@ const AdminDashboard = () => {
           <Text style={styles.switchButtonText}>Switch to Resident</Text>
         </TouchableOpacity>
       </View>
-  
+
       {/* Admin Navigation */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.navContainer}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.navItem, activeSection === 'maintenance' && styles.activeNavItem]}
           onPress={() => setActiveSection('maintenance')}
         >
@@ -671,7 +868,7 @@ const AdminDashboard = () => {
           <Text style={[styles.navText, activeSection === 'maintenance' && styles.activeNavText]}>Maintenance</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.navItem, activeSection === 'noticeboard' && styles.activeNavItem]}
           onPress={() => setActiveSection('noticeboard')}
         >
@@ -679,7 +876,7 @@ const AdminDashboard = () => {
           <Text style={[styles.navText, activeSection === 'noticeboard' && styles.activeNavText]}>Noticeboard</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.navItem, activeSection === 'users' && styles.activeNavItem]}
           onPress={() => setActiveSection('users')}
         >
@@ -687,7 +884,7 @@ const AdminDashboard = () => {
           <Text style={[styles.navText, activeSection === 'users' && styles.activeNavText]}>User Management</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.navItem, activeSection === 'bookings' && styles.activeNavItem]}
           onPress={() => setActiveSection('bookings')}
         >
@@ -695,15 +892,15 @@ const AdminDashboard = () => {
           <Text style={[styles.navText, activeSection === 'bookings' && styles.activeNavText]}>Bookings</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.navItem, activeSection === 'emergency' && styles.activeNavItem]}
           onPress={() => setActiveSection('emergency')}
         >
           <Icon name="phone" size={24} color={activeSection === 'emergency' ? '#366732' : '#666'} />
           <Text style={[styles.navText, activeSection === 'emergency' && styles.activeNavText]}>Emergency</Text>
         </TouchableOpacity>
-  
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={[styles.navItem, activeSection === 'store' && styles.activeNavItem]}
           onPress={() => setActiveSection('store')}
         >
@@ -712,7 +909,7 @@ const AdminDashboard = () => {
         </TouchableOpacity>
 
       </ScrollView>
-  
+
       {/* Content Section */}
       <FlatList
         style={styles.contentContainer}
@@ -723,7 +920,7 @@ const AdminDashboard = () => {
       />
     </View>
   );
-  
+
 };
 
 const styles = StyleSheet.create({
@@ -744,7 +941,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 15,
-    marginTop:15
+    marginTop: 15
   },
   userTextContainer: {
     marginLeft: 15,
@@ -755,20 +952,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginTop: 2,
   },
-  switchButton:{
-    backgroundColor: '#E6F2EA', 
-    padding: 8, 
+  switchButton: {
+    backgroundColor: '#E6F2EA',
+    padding: 8,
     borderRadius: 6,
     alignSelf: 'flex-end',
-    marginTop:-5,
-    flexDirection:'row',
-    gap:5
+    marginTop: -5,
+    flexDirection: 'row',
+    gap: 5
   },
   switchButtonText: {
     color: '#366732',
     fontWeight: 'bold',
     fontSize: 14,
-  },  
+  },
   userAvatar: {
     width: 60,
     height: 60,
@@ -809,7 +1006,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
-    flexGrow:0
+    flexGrow: 0
   },
   navItem: {
     paddingHorizontal: 20,
@@ -820,8 +1017,8 @@ const styles = StyleSheet.create({
   activeNavItem: {
     borderBottomWidth: 2,
     borderBottomColor: '#366732',
-    backgroundColor:'#f5f5f5',
-    borderRadius:8,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
   },
   navText: {
     fontSize: 14,
@@ -844,6 +1041,47 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 15,
+  },
+  dateSelectorContainer: {
+    marginBottom: 15,
+  },
+  dateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 10,
+    elevation: 2,
+  },
+  arrowButton: {
+    padding: 8,
+  },
+  monthYearDisplay: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  monthYearText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#366732',
+  },
+  dropdownContainer: {
+    flexDirection: 'row',
+    marginTop: 10,
+    justifyContent: 'space-between',
+  },
+  dropdown: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginHorizontal: 5,
+    elevation: 2,
+  },
+  amountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 5,
   },
   summaryCard: {
     backgroundColor: '#fff',
@@ -1185,6 +1423,119 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  // Add these styles to your StyleSheet
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+modalContainer: {
+  backgroundColor: '#fff',
+  borderRadius: 10,
+  width: '90%',
+  maxWidth: 400,
+  maxHeight: '80%',
+},
+modalHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: 15,
+  borderBottomWidth: 1,
+  borderBottomColor: '#eee',
+},
+modalTitle: {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#333',
+},
+modalContent: {
+  padding: 15,
+},
+modalFooter: {
+  flexDirection: 'row',
+  justifyContent: 'flex-end',
+  padding: 15,
+  borderTopWidth: 1,
+  borderTopColor: '#eee',
+},
+selectorSection: {
+  marginBottom: 20,
+},
+selectorLabel: {
+  fontSize: 16,
+  fontWeight: '500',
+  color: '#333',
+  marginBottom: 10,
+},
+horizontalScroll: {
+  marginBottom: 10,
+},
+yearButton: {
+  paddingHorizontal: 15,
+  paddingVertical: 8,
+  marginRight: 10,
+  borderRadius: 20,
+  backgroundColor: '#f5f5f5',
+},
+selectedYearButton: {
+  backgroundColor: '#366732',
+},
+yearButtonText: {
+  color: '#666',
+  fontWeight: '500',
+},
+selectedYearButtonText: {
+  color: '#fff',
+},
+monthGrid: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  justifyContent: 'space-between',
+},
+monthButton: {
+  width: '30%',
+  paddingVertical: 12,
+  marginBottom: 10,
+  borderRadius: 8,
+  backgroundColor: '#f5f5f5',
+  alignItems: 'center',
+},
+selectedMonthButton: {
+  backgroundColor: '#366732',
+},
+monthButtonText: {
+  color: '#666',
+  fontWeight: '500',
+},
+selectedMonthButtonText: {
+  color: '#fff',
+},
+cancelButton: {
+  paddingHorizontal: 20,
+  paddingVertical: 10,
+  marginRight: 10,
+  borderRadius: 5,
+  backgroundColor: '#f5f5f5',
+},
+cancelButtonText: {
+  color: '#666',
+  fontWeight: '500',
+},
+confirmButton: {
+  paddingHorizontal: 20,
+  paddingVertical: 10,
+  borderRadius: 5,
+  backgroundColor: '#366732',
+},
+confirmButtonText: {
+  color: '#fff',
+  fontWeight: '500',
+},
+dropdownIcon: {
+  marginLeft: 5,
+},
 });
 
 export default AdminDashboard;

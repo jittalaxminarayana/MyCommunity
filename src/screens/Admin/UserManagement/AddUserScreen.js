@@ -26,7 +26,7 @@ const AddUserScreen = () => {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [apartmentId, setApartmentId] = useState('');
-  const [role, setRole] = useState('resident');
+  const [role, setRole] = useState('Resident');
   const [occupancyStatus, setOccupancyStatus] = useState('tenant');
   const [loading, setLoading] = useState(false);
 
@@ -126,7 +126,7 @@ const AddUserScreen = () => {
 
             <Text style={styles.label}>Role</Text>
             <View style={styles.radioGroup}>
-              {['resident', 'admin', 'security'].map((r) => (
+              {['Resident', 'Admin', 'Security'].map((r) => (
                 <TouchableOpacity
                   key={r}
                   style={[

@@ -173,13 +173,17 @@ const GatePassScreen = ({ navigation }) => {
               apartmentId: apartmentId
             },
           });
-      
           console.log('Notification Sent:', result.data);
+
+        //   const generateMaintenanceManual = httpsCallable(functions(), 'generateMaintenanceManual');
+        //   const response   = await generateMaintenanceManual({});
+        //   console.log('generateMaintenanceManual:', response.data);
+    
         } catch (error) {
           console.error('Notification Error:', error);
         }
       };
-    
+
     return (
         <View style={styles.container}>
             <View style={styles.header}>

@@ -13,29 +13,41 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
   const [maintenanceList, setMaintenanceList] = useState([]);
   const [filter, setFilter] = useState('all');
 
-  useEffect(() => {
-  const unsubscribe = firestore()
-    .collection('communities')
-    .doc(communityData.id)
-    .collection('maintenanceDues')
-    .where('apartmentId', '>=', `${block}-`)
-    .where('apartmentId', '<=', `${block}-\uf8ff`)
-    .onSnapshot(snapshot => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        dueDate: doc.data().dueDate?.toDate(),
-        createdAt: doc.data().createdAt?.toDate(),
-      }));
-      setMaintenanceList(data);
-      setLoading(false);
-    }, (error) => {
-      console.error('Error fetching maintenance:', error);
-      setLoading(false);
-    });
+  // Get current month and year
+  const currentDate = new Date();
+  const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
+  const currentYear = currentDate.getFullYear();
+  const currentMonthKey = `${currentMonth} ${currentYear}`;
 
-  return () => unsubscribe();
-}, [block, communityData.id]);
+  useEffect(() => {
+    const unsubscribe = firestore()
+      .collection('communities')
+      .doc(communityData.id)
+      .collection('maintenanceDues')
+      .where('apartmentId', '>=', `${block}-`)
+      .where('apartmentId', '<=', `${block}-\uf8ff`)
+      .onSnapshot(snapshot => {
+        const data = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          dueDate: doc.data().dueDate?.toDate(),
+          createdAt: doc.data().createdAt?.toDate(),
+        }));
+        
+        // Filter for current month only
+        const currentMonthData = data.filter(item => 
+          item.month === currentMonthKey
+        );
+        
+        setMaintenanceList(currentMonthData);
+        setLoading(false);
+      }, (error) => {
+        console.error('Error fetching maintenance:', error);
+        setLoading(false);
+      });
+
+    return () => unsubscribe();
+  }, [block, communityData.id]);
 
   const filteredData = maintenanceList.filter(item => {
     if (filter === 'all') return true;
@@ -54,7 +66,6 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
           updatedAt: firestore.FieldValue.serverTimestamp()
         });
 
-      // Refresh data
       const updatedList = maintenanceList.map(item =>
         item.id === id ? { ...item, status: 'paid' } : item
       );
@@ -66,12 +77,11 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
 
   return (
     <View style={{ flex: 1 }}>
-
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Maintenance Management</Text>
+        <Text style={styles.headerTitle}>Maintenance - {currentMonthKey}</Text>
       </View>
 
       <View style={styles.container}>
@@ -80,25 +90,19 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
             style={[styles.filterButton, filter === 'all' && styles.activeFilter]}
             onPress={() => setFilter('all')}
           >
-            <Text style={[styles.filterText, filter === 'all' ? { color: 'white' } : null]}>All</Text>
+            <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>All</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.filterButton, filter === 'pending' && styles.activeFilter]}
             onPress={() => setFilter('pending')}
           >
-            <Text style={[styles.filterText, filter === 'pending' ? { color: 'white' } : null]}>Pending</Text>
+            <Text style={[styles.filterText, filter === 'pending' && styles.activeFilterText]}>Pending</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.filterButton, filter === 'paid' && styles.activeFilter]}
             onPress={() => setFilter('paid')}
           >
-            <Text style={[styles.filterText, filter === 'paid' ? { color: 'white' } : null]}>Paid</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, filter === 'overdue' && styles.activeFilter]}
-            onPress={() => setFilter('overdue')}
-          >
-            <Text style={[styles.filterText, filter === 'overdue' ? { color: 'white' } : null]}>Overdue</Text>
+            <Text style={[styles.filterText, filter === 'paid' && styles.activeFilterText]}>Paid</Text>
           </TouchableOpacity>
         </View>
 
@@ -113,7 +117,7 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
                 <View style={styles.cardHeader}>
                   <Text style={styles.apartmentText}>Apartment {item.apartmentId}</Text>
                   <View style={[styles.statusBadge,
-                  item.status === 'paid' ? styles.paidBadge :
+                    item.status === 'paid' ? styles.paidBadge :
                     item.status === 'overdue' ? styles.overdueBadge : styles.pendingBadge
                   ]}>
                     <Text style={styles.statusText}>{item.status}</Text>
@@ -129,14 +133,6 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
                     <Icon name="cash" size={20} color="#666" />
                     <Text style={styles.detailText}>₹{item.amount.toLocaleString()}</Text>
                   </View>
-                  {item.lateFee && (
-                    <View style={styles.detailRow}>
-                      <Icon name="alert-circle" size={20} color="#FF5722" />
-                      <Text style={[styles.detailText, { color: '#FF5722' }]}>
-                        Late fee: ₹{item.lateFee}
-                      </Text>
-                    </View>
-                  )}
                 </View>
 
                 {item.status !== 'paid' && (
@@ -147,17 +143,13 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
                     <Text style={styles.payButtonText}>Mark as Paid</Text>
                   </TouchableOpacity>
                 )}
-
-                {item.paymentNote && (
-                  <View style={styles.noteContainer}>
-                    <Text style={styles.noteText}>Note: {item.paymentNote}</Text>
-                  </View>
-                )}
               </View>
             )}
             ListEmptyComponent={
-              <Text style={styles.emptyText}>No maintenance records found</Text>
-            }
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No maintenance records for {currentMonthKey}</Text>
+              </View>
+            }            
           />
         )}
       </View>
@@ -194,7 +186,7 @@ const styles = StyleSheet.create({
   filterContainer: {
     flexDirection: 'row',
     marginBottom: 15,
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
   },
   filterButton: {
     paddingVertical: 8,
@@ -272,19 +264,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
   },
-  noteContainer: {
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  noteText: {
-    fontStyle: 'italic',
-    color: '#666',
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   emptyText: {
     textAlign: 'center',
-    marginTop: 20,
     color: '#666',
   },
   loader: {

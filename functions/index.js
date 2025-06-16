@@ -3,6 +3,8 @@ const admin = require('firebase-admin');
 
 admin.initializeApp();
 
+const db = admin.firestore();
+
 exports.sendToUserDevices = functions.https.onCall(async (data, context) => {
   try {
     const { communityId, userId, title, body, extraData = {} } = data?.data;
@@ -318,6 +320,254 @@ exports.sendNotificationToSecurity = functions.https.onCall(async (data, context
       'Failed to send notification to security personnel',
       error.message
     );
+  }
+});
+
+
+exports.generateMonthlyMaintenance = functions.scheduler.onSchedule({
+  schedule: '1 0 1 * *', // Cron expression: minute hour day month dayOfWeek
+  timeZone: 'Asia/Kolkata', // Set your timezone
+}, async (context) => {
+  try {
+    console.log('Starting monthly maintenance generation...');
+    
+    const currentDate = new Date();
+    const currentMonth = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+    const dueDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 10); // Due on 10th of current month
+    
+    // Get all communities
+    const communitiesSnapshot = await db.collection('communities').get();
+    
+    for (const communityDoc of communitiesSnapshot.docs) {
+      const communityId = communityDoc.id;
+      const communityData = communityDoc.data();
+      
+      console.log(`Processing community: ${communityData.name}`);
+      
+      // Get all approved users in this community (Residents and Admins)
+      const usersSnapshot = await db
+        .collection('communities')
+        .doc(communityId)
+        .collection('users')
+        .where('approved', '==', true)
+        .where('role', 'in', ['Resident', 'Admin']) // Include both Residents and Admins
+        .get();
+      
+      const batch = db.batch();
+      let generatedCount = 0;
+      
+      for (const userDoc of usersSnapshot.docs) {
+        const userData = userDoc.data();
+        const userId = userDoc.id;
+        
+        // Check if maintenance already exists for this month
+        const existingDueQuery = await db
+          .collection('communities')
+          .doc(communityId)
+          .collection('maintenanceDues')
+          .where('userId', '==', userId)
+          .where('month', '==', currentMonth)
+          .get();
+        
+        if (existingDueQuery.empty) {
+          // Generate maintenance due
+          const dueId = db
+            .collection('communities')
+            .doc(communityId)
+            .collection('maintenanceDues')
+            .doc().id;
+          
+          const maintenanceDue = {
+            apartmentId: userData.apartmentId,
+            userId: userId,
+            userName: userData.name,
+            month: currentMonth,
+            amount: getMaintenanceAmount(userData.apartmentId, communityData), // You can customize this
+            dueDate: admin.firestore.Timestamp.fromDate(dueDate),
+            status: 'pending',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            paymentId: null,
+            lateFee: 0,
+            notes: `Monthly maintenance for apartment ${userData.apartmentId} - ${currentMonth}`
+          };
+          
+          const dueRef = db
+            .collection('communities')
+            .doc(communityId)
+            .collection('maintenanceDues')
+            .doc(dueId);
+          
+          batch.set(dueRef, maintenanceDue);
+          generatedCount++;
+        }
+      }
+      
+      // Commit the batch
+      if (generatedCount > 0) {
+        await batch.commit();
+        console.log(`Generated ${generatedCount} maintenance dues for community ${communityData.name}`);
+      } else {
+        console.log(`No new maintenance dues needed for community ${communityData.name}`);
+      }
+    }
+    
+    console.log('Monthly maintenance generation completed successfully');
+    return null;
+    
+  } catch (error) {
+    console.error('Error generating monthly maintenance:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to generate monthly maintenance');
+  }
+});
+
+// Helper function to determine maintenance amount based on apartment and community settings
+function getMaintenanceAmount(apartmentId, communityData) {
+  // Use the monthlyMaintenanceAmount from community document
+  return communityData.monthlyMaintenanceAmount || 2000; // Default to 2000 if not set
+}
+
+// Optional: Manual trigger function for testing
+exports.generateMaintenanceManual = functions.https.onCall(async (data, context) => {
+  try {
+    console.log('Starting manual maintenance generation...');
+    
+    const currentDate = new Date();
+    const currentMonth = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+    const dueDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 10);
+    
+    // Get all communities
+    const communitiesSnapshot = await db.collection('communities').get();
+    let totalGenerated = 0;
+    
+    for (const communityDoc of communitiesSnapshot.docs) {
+      const communityId = communityDoc.id;
+      const communityData = communityDoc.data();
+      
+      console.log(`Processing community: ${communityData.name}`);
+      
+      // Get all approved users in this community (Residents and Admins)
+      const usersSnapshot = await db
+        .collection('communities')
+        .doc(communityId)
+        .collection('users')
+        .where('approved', '==', true)
+        .where('role', 'in', ['Resident', 'Admin'])
+        .get();
+      
+      const batch = db.batch();
+      let generatedCount = 0;
+      
+      for (const userDoc of usersSnapshot.docs) {
+        const userData = userDoc.data();
+        const userId = userDoc.id;
+        
+        // Check if maintenance already exists for this month
+        const existingDueQuery = await db
+          .collection('communities')
+          .doc(communityId)
+          .collection('maintenanceDues')
+          .where('userId', '==', userId)
+          .where('month', '==', currentMonth)
+          .get();
+        
+        if (existingDueQuery.empty) {
+          const dueId = db
+            .collection('communities')
+            .doc(communityId)
+            .collection('maintenanceDues')
+            .doc().id;
+          
+          const maintenanceDue = {
+            apartmentId: userData.apartmentId,
+            userId: userId,
+            userName: userData.name,
+            month: currentMonth,
+            amount: getMaintenanceAmount(userData.apartmentId, communityData),
+            dueDate: admin.firestore.Timestamp.fromDate(dueDate),
+            status: 'pending',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            paymentId: null,
+            lateFee: 0,
+            notes: `Monthly maintenance for apartment ${userData.apartmentId} - ${currentMonth}`
+          };
+          
+          const dueRef = db
+            .collection('communities')
+            .doc(communityId)
+            .collection('maintenanceDues')
+            .doc(dueId);
+          
+          batch.set(dueRef, maintenanceDue);
+          generatedCount++;
+        }
+      }
+      
+      if (generatedCount > 0) {
+        await batch.commit();
+        totalGenerated += generatedCount;
+        console.log(`Generated ${generatedCount} maintenance dues for community ${communityData.name}`);
+      }
+    }
+    
+    return {
+      success: true,
+      message: `Manual generation completed. Generated ${totalGenerated} maintenance dues.`,
+      totalGenerated: totalGenerated
+    };
+    
+  } catch (error) {
+    console.error('Error in manual maintenance generation:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to generate maintenance manually');
+  }
+});
+
+// Function to mark overdue maintenance
+exports.markOverdueMaintenance = functions.scheduler.onSchedule({
+  schedule: '0 2 * * *', // Run daily at 2 AM
+  timeZone: 'Asia/Kolkata'
+}, async (context) => {
+  try {
+    console.log('Checking for overdue maintenance...');
+    
+    const currentDate = new Date();
+    
+    // Get all communities
+    const communitiesSnapshot = await db.collection('communities').get();
+    
+    for (const communityDoc of communitiesSnapshot.docs) {
+      const communityId = communityDoc.id;
+      
+      // Get pending maintenance dues that are past due date
+      const overdueQuery = await db
+        .collection('communities')
+        .doc(communityId)
+        .collection('maintenanceDues')
+        .where('status', '==', 'pending')
+        .where('dueDate', '<', admin.firestore.Timestamp.fromDate(currentDate))
+        .get();
+      
+      const batch = db.batch();
+      let overdueCount = 0;
+      
+      overdueQuery.forEach((doc) => {
+        batch.update(doc.ref, {
+          status: 'overdue',
+          lateFee: 500, // Add late fee
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        overdueCount++;
+      });
+      
+      if (overdueCount > 0) {
+        await batch.commit();
+        console.log(`Marked ${overdueCount} maintenance dues as overdue in community ${communityId}`);
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error marking overdue maintenance:', error);
+    return null; // Don't throw error to prevent function retries
   }
 });
 
