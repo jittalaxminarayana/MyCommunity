@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Image, Platform, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
@@ -15,6 +15,8 @@ const AllUsersScreen = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedBlock, setSelectedBlock] = useState('All');
+  const [availableBlocks, setAvailableBlocks] = useState(['All']);
 
   useEffect(() => {
     // Set up real-time listener
@@ -29,6 +31,25 @@ const AllUsersScreen = () => {
             ...doc.data()
           }));
           
+          // Extract unique blocks from apartment IDs
+          const blocks = new Set(['All']);
+          usersData.forEach(user => {
+            if (user.apartmentId) {
+              const block = user.apartmentId.split('-')[0]; // Extract block from "A-101" format
+              if (block) {
+                blocks.add(block.toUpperCase());
+              }
+            }
+          });
+          
+          // Sort blocks alphabetically (keeping 'All' first)
+          const sortedBlocks = Array.from(blocks).sort((a, b) => {
+            if (a === 'All') return -1;
+            if (b === 'All') return 1;
+            return a.localeCompare(b);
+          });
+          
+          setAvailableBlocks(sortedBlocks);
           setUsers(usersData);
           setFilteredUsers(usersData);
           setLoading(false);
@@ -46,17 +67,28 @@ const AllUsersScreen = () => {
   }, [communityData.id]);
 
   useEffect(() => {
+    let filtered = users;
+
+    // Filter by block first
+    if (selectedBlock !== 'All') {
+      filtered = users.filter(user => {
+        if (!user.apartmentId) return false;
+        const userBlock = user.apartmentId.split('-')[0];
+        return userBlock && userBlock.toUpperCase() === selectedBlock.toUpperCase();
+      });
+    }
+
+    // Then filter by search query
     if (searchQuery) {
-      const filtered = users.filter(user => 
+      filtered = filtered.filter(user => 
         user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (user.apartmentId && user.apartmentId.toLowerCase().includes(searchQuery.toLowerCase()))
       );
-      setFilteredUsers(filtered);
-    } else {
-      setFilteredUsers(users);
     }
-  }, [searchQuery, users]);
+
+    setFilteredUsers(filtered);
+  }, [searchQuery, users, selectedBlock]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -64,6 +96,38 @@ const AllUsersScreen = () => {
     // so we just need to trigger the refreshing state
     setTimeout(() => setRefreshing(false), 1000);
   };
+
+  const handleBlockFilter = (block) => {
+    setSelectedBlock(block);
+  };
+
+  const renderBlockFilter = () => (
+    <View style={styles.blockFilterContainer}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.blockFilterContent}
+      >
+        {availableBlocks.map((block) => (
+          <TouchableOpacity
+            key={block}
+            style={[
+              styles.blockFilterButton,
+              selectedBlock === block && styles.activeBlockFilter
+            ]}
+            onPress={() => handleBlockFilter(block)}
+          >
+            <Text style={[
+              styles.blockFilterText,
+              selectedBlock === block && styles.activeBlockFilterText
+            ]}>
+              {block === 'All' ? 'All' : `Block ${block}`}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
 
   const renderUserItem = ({ item }) => (
     <TouchableOpacity 
@@ -123,12 +187,24 @@ const AllUsersScreen = () => {
         <Text style={styles.headerTitle}>All Community Users</Text>
       </View>
 
+      {/* Block Filter */}
+      {renderBlockFilter()}
+
+      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <SearchBar 
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholder="Search by name, email or apartment"
         />
+      </View>
+
+      {/* Users Count */}
+      <View style={styles.countContainer}>
+        <Text style={styles.countText}>
+          {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''} 
+          {selectedBlock !== 'All' ? ` in Block ${selectedBlock}` : ''}
+        </Text>
       </View>
 
       <FlatList
@@ -139,7 +215,12 @@ const AllUsersScreen = () => {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Icon name="account-question" size={50} color="#ccc" />
-            <Text style={styles.emptyText}>No users found</Text>
+            <Text style={styles.emptyText}>
+              {searchQuery || selectedBlock !== 'All' 
+                ? 'No users found for the selected criteria' 
+                : 'No users found'
+              }
+            </Text>
           </View>
         }
         refreshing={refreshing}
@@ -186,10 +267,50 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  blockFilterContainer: {
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  blockFilterContent: {
+    paddingHorizontal: 15,
+  },
+  blockFilterButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  activeBlockFilter: {
+    backgroundColor: '#366732',
+    borderColor: '#366732',
+  },
+  blockFilterText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  activeBlockFilterText: {
+    color: '#fff',
+  },
   searchContainer: {
     paddingHorizontal: 15,
     paddingVertical: 10,
     backgroundColor: '#fff',
+  },
+  countContainer: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    backgroundColor: '#f9f9f9',
+  },
+  countText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
   },
   listContainer: {
     padding: 15,
@@ -258,6 +379,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#888',
     marginTop: 10,
+    textAlign: 'center',
   },
   addButton: {
     position: 'absolute',

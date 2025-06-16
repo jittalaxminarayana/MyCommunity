@@ -33,6 +33,7 @@ const ProfileScreen = () => {
   // State for edit mode
   const [isEditMode, setIsEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   // User data states
   const [userId, setUserId] = useState(userData?.id || '');
@@ -74,6 +75,10 @@ const ProfileScreen = () => {
     receiveNotifications: userData?.privacySettings?.receiveNotifications || true,
     showProfileInDirectory: userData?.privacySettings?.showProfileInDirectory || true
   });
+
+  const [selectedMemberImage, setSelectedMemberImage] = useState(null);
+  const [selectedStaffImage, setSelectedStaffImage] = useState(null);
+  const [selectedVehicleImage, setSelectedVehicleImage] = useState(null);
 
   useEffect(() => {
     // Update local state when userData changes
@@ -130,7 +135,69 @@ const ProfileScreen = () => {
       setSubmitting(false);
     }
   };
+
+  const uploadImage = async (path, imageUri) => {
+    const imageRef = storage().ref(path);
+    await imageRef.putFile(imageUri);
+    return await imageRef.getDownloadURL();
+  };
   
+  const uploadFamilyMemberImage = async (memberId, memberName, imageUri) => {
+    const cleanName = communityData?.name.replace(/\s+/g, '-').toLowerCase();
+    const userCleanName = userData?.name.replace(/\s+/g, '-').toLowerCase();
+    const memberCleanName = memberName.replace(/\s+/g, '-').toLowerCase();
+    
+    const path = `communities/${communityData?.id}-${cleanName}/users/${userData.id}-${userCleanName}/family/${memberId}-${memberCleanName}/${Date.now()}-family`;
+    return await uploadImage(path, imageUri);
+  };
+  
+  const uploadStaffMemberImage = async (staffId, staffName, imageUri) => {
+    const cleanName = communityData?.name.replace(/\s+/g, '-').toLowerCase();
+    const userCleanName = userData?.name.replace(/\s+/g, '-').toLowerCase();
+    const staffCleanName = staffName.replace(/\s+/g, '-').toLowerCase();
+    
+    const path = `communities/${communityData?.id}-${cleanName}/users/${userData.id}-${userCleanName}/staff/${staffId}-${staffCleanName}/${Date.now()}-staff`;
+    return await uploadImage(path, imageUri);
+  };
+  
+  const uploadVehicleImage = async (vehicleId, vehicleNumber, imageUri) => {
+    const cleanName = communityData?.name.replace(/\s+/g, '-').toLowerCase();
+    const userCleanName = userData?.name.replace(/\s+/g, '-').toLowerCase();
+    const cleanVehicleNumber = vehicleNumber.replace(/\s+/g, '-').toLowerCase();
+    
+    const path = `communities/${communityData?.id}-${cleanName}/users/${userData.id}-${userCleanName}/vehicles/${vehicleId}-${cleanVehicleNumber}/${Date.now()}-vehicle`;
+    return await uploadImage(path, imageUri);
+  };
+
+  const selectImage = (type) => {
+    const options = {
+      mediaType: 'photo',
+      maxWidth: 1000,
+      maxHeight: 1000,
+      quality: 0.8,
+    };
+  
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel || response.errorCode || !response.assets?.[0]?.uri) return;
+      
+      const image = {
+        uri: response.assets[0].uri,
+        name: response.assets[0].fileName || `image-${Date.now()}`,
+      };
+  
+      switch(type) {
+        case 'family':
+          setSelectedMemberImage(image);
+          break;
+        case 'staff':
+          setSelectedStaffImage(image);
+          break;
+        case 'vehicle':
+          setSelectedVehicleImage(image);
+          break;
+      }
+    });
+  };
 
   const handleSelectProfileImage = () => {
     const options = {
@@ -155,7 +222,10 @@ const ProfileScreen = () => {
           // Upload to Firebase storage if in edit mode
           if (isEditMode) {
             const cleanName = communityData?.name.replace(/\s+/g, '-').toLowerCase();
-            const imageRef = storage().ref(`communities/${communityData?.id}-${cleanName}/users/${userData.id}/profile`);
+            const userCleanName = userData?.name.replace(/\s+/g, '-').toLowerCase();
+            const imageRef = storage().ref(
+              `communities/${communityData?.id}-${cleanName}/users/${userData.id}-${userCleanName}/profile/${Date.now()}-profile`
+            );
             await imageRef.putFile(source.uri);
             const downloadUrl = await imageRef.getDownloadURL();
             setProfileImage(downloadUrl);
@@ -190,7 +260,7 @@ const ProfileScreen = () => {
       return;
     }
     
-    setIsLoading(true);
+    setIsSaving(true);
     try {
       const updatedData = {
         name,
@@ -222,7 +292,7 @@ const ProfileScreen = () => {
       console.error('Error updating profile:', error);
       Alert.alert('Error', 'Failed to update profile');
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
 
@@ -233,12 +303,23 @@ const ProfileScreen = () => {
     }
   
     try {
+      setIsLoading(true);
       const newMember = {
         id: Date.now().toString(),
         name: newMemberName,
         relation: newMemberRelation,
-        phone: newMemberPhone
+        phone: newMemberPhone,
+        imageUrl: ''
       };
+
+      // Upload image if selected
+      if (selectedMemberImage) {
+        newMember.imageUrl = await uploadFamilyMemberImage(
+          newMember.id,
+          newMember.name,
+          selectedMemberImage.uri
+        );
+      }
 
       const updatedData = {
         name,
@@ -267,6 +348,7 @@ const ProfileScreen = () => {
       setNewMemberName('');
       setNewMemberRelation('');
       setNewMemberPhone('');
+      setSelectedMemberImage(null);
       setShowAddMemberModal(false);
 
       // Update Redux state
@@ -274,10 +356,11 @@ const ProfileScreen = () => {
         type: 'UPDATE_USER_PROFILE',
         payload: updatedData
       }); 
-  
+      setIsSaving(false);
       Alert.alert('Success', 'Family member added successfully');
       
     } catch (error) {
+      setIsSaving(false);
       console.error('Error adding family member:', error);
       Alert.alert('Error', 'Failed to add family member');
     }
@@ -306,14 +389,23 @@ const ProfileScreen = () => {
       Alert.alert('Error', 'Name cannot be empty');
       return;
     }
-  
     try {
+      setIsLoading(true);
       const newStaff = {
         id: Date.now().toString(),
         name: newStaffName,
         role: newStaffRole,
-        phone: newStaffPhone
+        phone: newStaffPhone,
+        imageUrl: ''
       };
+
+      if (selectedStaffImage) {
+        newStaff.imageUrl = await uploadStaffMemberImage(
+          newStaff.id,
+          newStaff.name,
+          selectedStaffImage.uri
+        );
+      }
 
       const updatedData = {
         name,
@@ -324,7 +416,7 @@ const ProfileScreen = () => {
         vehicles,
         privacySettings
       };
-  
+
       // Reference to the user document in the community
       const userRef = firestore()
         .collection('communities')
@@ -343,16 +435,18 @@ const ProfileScreen = () => {
       setNewStaffRole('');
       setNewStaffPhone('');
       setShowAddStaffModal(false);
+      setSelectedStaffImage(null);
 
       // Update Redux state
       dispatch({
         type: 'UPDATE_USER_PROFILE',
         payload: updatedData
       });  
-  
+      setIsLoading(false);
       Alert.alert('Success', 'Family member added successfully');
       
     } catch (error) {
+      setIsLoading(false);
       console.error('Error adding family member:', error);
       Alert.alert('Error', 'Failed to add family member');
     }
@@ -383,13 +477,23 @@ const ProfileScreen = () => {
     }
   
     try {
+      setIsLoading(true);
       const newVehicle = {
         id: Date.now().toString(),
         type: newVehicleType,
         number: newVehicleNumber,
         model: newVehicleModel,
         parkingSlot: newParkingSlot,
+        imageUrl: ''
       };
+
+      if (selectedVehicleImage) {
+        newVehicle.imageUrl = await uploadVehicleImage(
+          newVehicle.id,
+          newVehicle.number,
+          selectedVehicleImage.uri
+        );
+      }
 
       const updatedData = {
         name,
@@ -419,16 +523,18 @@ const ProfileScreen = () => {
       setNewVehicleNumber('');
       setNewVehicleModel('');
       setShowAddVehicleModal(false);
+      setSelectedVehicleImage(null);
 
       // Update Redux state
       dispatch({
         type: 'UPDATE_USER_PROFILE',
         payload: updatedData
-      });  
-  
+      }); 
+      setIsLoading(false); 
       Alert.alert('Success', 'Vehicle added successfully');
       
     } catch (error) {
+      setIsLoading(false);
       console.error('Error adding vehicle:', error);
       Alert.alert('Error', 'Failed to add vehicle');
     }
@@ -504,6 +610,23 @@ const ProfileScreen = () => {
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Add Family Member</Text>
+
+          <TouchableOpacity
+            style={styles.imageUploadButton}
+            onPress={() => selectImage('family')}
+          >
+            {selectedMemberImage ? (
+              <Image
+                source={{ uri: selectedMemberImage.uri }}
+                style={styles.previewImage}
+              />
+            ) : (
+              <View style={styles.uploadPlaceholder}>
+                <Icon name="camera" size={24} color="#366732" />
+                <Text>Add Photo</Text>
+              </View>
+            )}
+          </TouchableOpacity>
           
           <TextInput
             style={styles.input}
@@ -539,7 +662,13 @@ const ProfileScreen = () => {
               style={[styles.modalButton, styles.saveButtonForItem]}
               onPress={addFamilyMember}
             >
-              <Text style={styles.saveButtonText}>Add</Text>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Text style={styles.saveButtonText}>Add</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -558,6 +687,23 @@ const ProfileScreen = () => {
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Add Staff Member</Text>
+
+          <TouchableOpacity
+            style={styles.imageUploadButton}
+            onPress={() => selectImage('staff')}
+          >
+            {selectedStaffImage ? (
+              <Image
+                source={{ uri: selectedStaffImage.uri }}
+                style={styles.previewImage}
+              />
+            ) : (
+              <View style={styles.uploadPlaceholder}>
+                <Icon name="camera" size={24} color="#366732" />
+                <Text>Add Photo</Text>
+              </View>
+            )}
+          </TouchableOpacity>
           
           <TextInput
             style={styles.input}
@@ -593,7 +739,13 @@ const ProfileScreen = () => {
               style={[styles.modalButton, styles.saveButtonForItem]}
               onPress={addStaffMember}
             >
-              <Text style={styles.saveButtonText}>Add</Text>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Text style={styles.saveButtonText}>Add</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -612,6 +764,23 @@ const ProfileScreen = () => {
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Add Vehicle</Text>
+
+          <TouchableOpacity
+            style={styles.imageUploadButton}
+            onPress={() => selectImage('vehicle')}
+          >
+            {selectedVehicleImage ? (
+              <Image
+                source={{ uri: selectedVehicleImage.uri }}
+                style={styles.previewImage}
+              />
+            ) : (
+              <View style={styles.uploadPlaceholder}>
+                <Icon name="camera" size={24} color="#366732" />
+                <Text>Add Photo</Text>
+              </View>
+            )}
+          </TouchableOpacity>
           
           <TextInput
             style={styles.input}
@@ -653,7 +822,13 @@ const ProfileScreen = () => {
               style={[styles.modalButton, styles.saveButtonForItem]}
               onPress={addVehicle}
             >
-              <Text style={styles.saveButtonText}>Add</Text>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Text style={styles.saveButtonText}>Add</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -678,9 +853,9 @@ const ProfileScreen = () => {
           <TouchableOpacity
             style={styles.saveButton}
             onPress={saveProfile}
-            disabled={isLoading}
+            disabled={isSaving}
           >
-            {isLoading ? (
+            {isSaving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <>
@@ -776,6 +951,12 @@ const ProfileScreen = () => {
             ) : (
               familyMembers.map((member) => (
                 <View key={member.id} style={styles.listItem}>
+                  {member.imageUrl && (
+                    <Image
+                      source={{ uri: member.imageUrl }}
+                      style={styles.listItemImage}
+                    />
+                  )}
                   <View style={styles.listItemContent}>
                     <Text style={styles.listItemTitle}>{member.name}</Text>
                     <Text style={styles.listItemSubtitle}>{member.relation}</Text>
@@ -830,6 +1011,12 @@ const ProfileScreen = () => {
             ) : (
               staffMembers.map((staff) => (
                 <View key={staff.id} style={styles.listItem}>
+                  {staff.imageUrl && (
+                    <Image
+                      source={{ uri: staff.imageUrl }}
+                      style={styles.listItemImage}
+                    />
+                  )}
                   <View style={styles.listItemContent}>
                     <Text style={styles.listItemTitle}>{staff.name}</Text>
                     <Text style={styles.listItemSubtitle}>{staff.role}</Text>
@@ -884,6 +1071,12 @@ const ProfileScreen = () => {
             ) : (
               vehicles.map((vehicle) => (
                 <View key={vehicle.id} style={styles.listItem}>
+                  {vehicle.imageUrl && (
+                    <Image
+                      source={{ uri: vehicle.imageUrl }}
+                      style={styles.listItemImage}
+                    />
+                  )}
                   <View style={styles.listItemContent}>
                     <Text style={styles.listItemTitle}>{vehicle.number}</Text>
                     <Text style={styles.listItemSubtitle}>{vehicle.type}{vehicle.model ? ` - ${vehicle?.model}` : ''}</Text>
@@ -1383,6 +1576,31 @@ closeText: {
   textAlign: 'center',
   color: '#666',
   marginBottom:20
+},
+imageUploadButton: {
+  width: 100,
+  height: 100,
+  borderRadius: 50,
+  backgroundColor: '#f0f0f0',
+  alignSelf: 'center',
+  marginBottom: 16,
+  justifyContent: 'center',
+  alignItems: 'center',
+  overflow: 'hidden',
+},
+previewImage: {
+  width: '100%',
+  height: '100%',
+},
+uploadPlaceholder: {
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+listItemImage: {
+  width: 70,
+  height: 70,
+  borderRadius: 5,
+  marginRight: 12,
 },
 });
 

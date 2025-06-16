@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import firestore from '@react-native-firebase/firestore';
 import { useSelector } from 'react-redux';
+import CustomAlert from '../../../components/CustomAlert';
 
 const MaintenanceDetailsScreen = ({ navigation }) => {
   const route = useRoute();
@@ -12,12 +13,26 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [maintenanceList, setMaintenanceList] = useState([]);
   const [filter, setFilter] = useState('all');
+  const [selectedItemId, setSelectedItemId] = useState(null); // Store selected item ID
+  const [alerts, setAlerts] = useState({
+    confirmation: false,
+    success: false,
+    error: false,
+  });
 
   // Get current month and year
   const currentDate = new Date();
   const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
   const currentYear = currentDate.getFullYear();
   const currentMonthKey = `${currentMonth} ${currentYear}`;
+
+  const showAlert = (type) => {
+    setAlerts(prev => ({ ...prev, [type]: true }));
+  };
+
+  const hideAlert = (type) => {
+    setAlerts(prev => ({ ...prev, [type]: false }));
+  };
 
   useEffect(() => {
     const unsubscribe = firestore()
@@ -44,6 +59,7 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
       }, (error) => {
         console.error('Error fetching maintenance:', error);
         setLoading(false);
+        showAlert('error');
       });
 
     return () => unsubscribe();
@@ -70,9 +86,24 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
         item.id === id ? { ...item, status: 'paid' } : item
       );
       setMaintenanceList(updatedList);
+      showAlert('success');
     } catch (error) {
       console.error('Error updating payment:', error);
+      showAlert('error');
     }
+  };
+
+  const confirmMarkPaid = (id) => {
+    setSelectedItemId(id); // Store the ID for later use
+    showAlert('confirmation');
+  };
+
+  const handleConfirmPayment = () => {
+    if (selectedItemId) {
+      markAsPaid(selectedItemId);
+      setSelectedItemId(null);
+    }
+    hideAlert('confirmation');
   };
 
   return (
@@ -126,6 +157,10 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
 
                 <View style={styles.cardBody}>
                   <View style={styles.detailRow}>
+                    <Icon name="account" size={20} color="#666" />
+                    <Text style={styles.detailText}>{item.userName}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
                     <Icon name="calendar-month" size={20} color="#666" />
                     <Text style={styles.detailText}>{item.month}</Text>
                   </View>
@@ -138,7 +173,7 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
                 {item.status !== 'paid' && (
                   <TouchableOpacity
                     style={styles.payButton}
-                    onPress={() => markAsPaid(item.id)}
+                    onPress={() => confirmMarkPaid(item.id)}
                   >
                     <Text style={styles.payButtonText}>Mark as Paid</Text>
                   </TouchableOpacity>
@@ -153,6 +188,41 @@ const MaintenanceDetailsScreen = ({ navigation }) => {
           />
         )}
       </View>
+
+      {/* Custom Alert Components */}
+      <CustomAlert
+        visible={alerts.confirmation}
+        title="Confirm Payment"
+        message="Are you sure you want to mark this maintenance as paid?"
+        cancelText="Cancel"
+        okText="Yes"
+        onOk={handleConfirmPayment}
+        onCancel={() => hideAlert('confirmation')}
+        showProceed={false}
+        alertType="warning"
+      />
+
+      <CustomAlert
+        visible={alerts.success}
+        title="Success!"
+        message="Maintenance has been marked as paid successfully."
+        onOk={() => hideAlert('success')}
+        okText="Great!"
+        showCancel={false}
+        showProceed={false}
+        alertType="success"
+      />
+
+      <CustomAlert
+        visible={alerts.error}
+        title="Error"
+        message="Something went wrong. Please try again."
+        onOk={() => hideAlert('error')}
+        okText="Retry"
+        showCancel={false}
+        showProceed={false}
+        alertType="error"
+      />
     </View>
   );
 };

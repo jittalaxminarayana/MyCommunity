@@ -476,7 +476,7 @@ const SecurityDashboard = ({ navigation }) => {
     return (
       <TouchableOpacity 
         style={styles.historyCard}
-        onPress={() => navigation.navigate('GatePassDetails', { gatePass: item })}
+        // onPress={() => navigation.navigate('GatePassDetails', { gatePass: item })}
       >
         <View style={styles.historyHeader}>
           <Text style={styles.historyVisitorName}>{item.visitorName}</Text>

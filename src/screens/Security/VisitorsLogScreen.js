@@ -24,19 +24,20 @@ const VisitorsLogScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredVisitors, setFilteredVisitors] = useState([]);
   
-  // Filter states
+  // Filter states - Changed default to 'currentMonth'
   const [filterModalVisible, setFilterModalVisible] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState('all'); // 'all', 'thisWeek', 'lastWeek', 'lastMonth', 'custom'
+  const [selectedFilter, setSelectedFilter] = useState('currentMonth'); // Changed from 'all' to 'currentMonth'
   const [customStartDate, setCustomStartDate] = useState(new Date());
   const [customEndDate, setCustomEndDate] = useState(new Date());
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
+  // Updated filter options - removed 'all', added 'currentMonth'
   const filterOptions = [
-    { key: 'all', label: 'All Time', icon: 'calendar' },
+    { key: 'currentMonth', label: 'Current Month', icon: 'calendar-month' },
     { key: 'thisWeek', label: 'This Week', icon: 'calendar-week' },
     { key: 'lastWeek', label: 'Last Week', icon: 'calendar-week-begin' },
-    { key: 'lastMonth', label: 'Last Month', icon: 'calendar-month' },
+    { key: 'lastMonth', label: 'Last Month', icon: 'calendar-month-outline' },
     { key: 'custom', label: 'Custom Range', icon: 'calendar-range' },
   ];
 
@@ -96,6 +97,11 @@ const VisitorsLogScreen = ({ navigation }) => {
     const now = new Date();
     
     switch (selectedFilter) {
+      case 'currentMonth': // Added current month case
+        const currentMonthStart = getStartOfMonth(now);
+        const currentMonthEnd = getEndOfMonth(now);
+        return filterByDateRange(visitors, currentMonthStart, currentMonthEnd);
+        
       case 'thisWeek':
         const thisWeekStart = getStartOfWeek(now);
         const thisWeekEnd = getEndOfWeek(now);
@@ -120,7 +126,10 @@ const VisitorsLogScreen = ({ navigation }) => {
         return filterByDateRange(visitors, customStart, customEnd);
         
       default:
-        return visitors;
+        // Fallback to current month instead of all visitors
+        const fallbackStart = getStartOfMonth(now);
+        const fallbackEnd = getEndOfMonth(now);
+        return filterByDateRange(visitors, fallbackStart, fallbackEnd);
     }
   };
 
@@ -166,7 +175,7 @@ const VisitorsLogScreen = ({ navigation }) => {
     if (selectedFilter === 'custom') {
       return `${customStartDate.toLocaleDateString()} - ${customEndDate.toLocaleDateString()}`;
     }
-    return option?.label || 'All Time';
+    return option?.label || 'Current Month'; // Changed fallback from 'All Time' to 'Current Month'
   };
 
   const handleFilterSelect = (filterKey) => {
@@ -321,9 +330,9 @@ const VisitorsLogScreen = ({ navigation }) => {
               <Icon name="account-group" size={64} color="#ccc" />
               <Text style={styles.emptyText}>No visitors found</Text>
               <Text style={styles.emptySubtext}>
-                {searchQuery || selectedFilter !== 'all' 
+                {searchQuery || selectedFilter !== 'currentMonth' 
                   ? 'Try adjusting your search terms or filters' 
-                  : 'No visitors have been logged yet'}
+                  : 'No visitors have been logged this month'}
               </Text>
             </View>
           }
