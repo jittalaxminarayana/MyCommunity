@@ -83,7 +83,7 @@ const AddEmergencyContactScreen = ({ route }) => {
                             onValueChange={(itemValue) => setCategory(itemValue)}
                             style={styles.picker}
                         >
-                            <Picker.Item label="Medical" value="medical" />
+                            <Picker.Item label="Medical" value="edical" />
                             <Picker.Item label="Fire" value="fire" />
                             <Picker.Item label="Police" value="police" />
                             <Picker.Item label="Plumbing" value="plumbing" />

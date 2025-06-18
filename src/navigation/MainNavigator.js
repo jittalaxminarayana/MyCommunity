@@ -2,6 +2,7 @@ import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import MainTabs from './MainTabs';
 import ChatList from '../screens/Common/Chat/ChatList';
+import GroupInfo from '../screens/Common/Chat/GroupInfo';
 
 //Maintenance
 import MaintenanceDetailsScreen from '../screens/Admin/MaintanceDetails/MaintenanceDetailsScreen';
@@ -53,6 +54,8 @@ export default function MainNavigator({ role, userData, communityData }) {
       </Stack.Screen>
       {/* Full-screen routes that will appear outside the tab bar */}
       <Stack.Screen name="ChatList" component={ChatList} options={{ headerShown: false }} />
+      <Stack.Screen name="GroupInfo" component={GroupInfo} options={{ headerShown: false }} />
+
       <Stack.Screen name="MaintenanceDetailsScreen" component={MaintenanceDetailsScreen} options={{ headerShown: false }} />
 
       <Stack.Screen name="AddEmergencyContactScreen" component={AddEmergencyContactScreen} options={{ headerShown: false }} />

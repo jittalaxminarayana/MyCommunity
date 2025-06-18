@@ -7,6 +7,8 @@ import { useSelector } from 'react-redux';
 import firestore from '@react-native-firebase/firestore';
 import storage from '@react-native-firebase/storage';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
+import { functions } from '../../../services/firebase';
+import { httpsCallable } from 'firebase/functions';
 
 const AddNoticeScreen = () => {
   const navigation = useNavigation();
@@ -130,6 +132,9 @@ const AddNoticeScreen = () => {
           attachments: imageUrls
         });
 
+        // Send notification with the passId
+      await sendNotificationToAllUsers(communityData?.id);
+
       Alert.alert('Success', 'Notice posted successfully');
       navigation.goBack();
     } catch (error) {
@@ -137,6 +142,27 @@ const AddNoticeScreen = () => {
       Alert.alert('Error', 'Failed to post notice. Please try again.');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const sendNotificationToAllUsers = async ( communityId) => {
+    try {
+      const sendToAllUserDevices = httpsCallable(functions(), 'sendToAllCommunityUsers');
+  
+      const result = await sendToAllUserDevices({
+        communityId: communityId,
+        title: "New Notice Posted",
+        body: "A new notice has been posted on the community notice board. Check it out!",
+        extraData: {
+          screen: 'Home',
+          type: "announcement",
+          priority: "high",
+        },
+      });
+  
+      console.log('Notification Sent:', result.data);
+    } catch (error) {
+      console.error('Notification Error:', error);
     }
   };
 

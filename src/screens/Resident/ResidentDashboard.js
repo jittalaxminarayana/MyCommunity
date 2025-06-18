@@ -231,6 +231,11 @@ const ResidentDashboard = ({ navigation }) => {
                   </ScrollView>
                 )}
 
+                <View style={styles.vendorRating}>
+                  <Icon name="star" size={16} color="#FFC107" />
+                  <Text style={styles.ratingText}>{vendor.rating || 'New'}</Text>
+                </View>
+
                 <Text style={styles.vendorInfo}>
                   <Icon name="map-marker" size={16} color="#777" /> {vendor.address}
                 </Text>
@@ -244,11 +249,6 @@ const ResidentDashboard = ({ navigation }) => {
                   >
                     <Icon name="phone" size={16} color="#fff" />
                   </TouchableOpacity>
-                </View>
-
-                <View style={styles.vendorRating}>
-                  <Icon name="star" size={16} color="#FFC107" />
-                  <Text style={styles.ratingText}>{vendor.rating || 'New'}</Text>
                 </View>
 
                 <Text style={styles.vendorServices}>
@@ -453,7 +453,7 @@ const ResidentDashboard = ({ navigation }) => {
               <View style={[styles.featureIconContainer, { backgroundColor: '#fff8e1' }]}>
                 <Icon name="credit-card-check" size={28} color="#f68422" />
               </View>
-              <Text style={styles.featureText}>Maintenance Payment</Text>
+              <Text style={styles.featureText}>Maintenance Dues</Text>
             </TouchableOpacity>
             
             <TouchableOpacity style={styles.featureCard} onPress={() => navigation.navigate('PaymentHistoryScreen')}>
@@ -481,7 +481,7 @@ const ResidentDashboard = ({ navigation }) => {
             {displayedEmergencyContacts.map(contact => (
               <TouchableOpacity key={contact.id} style={styles.contactCard}>
                 <View style={styles.contactIconContainer}>
-                  <Icon name={contact.icon} size={24} color="#366732" />
+                  <Icon name={contact?.icon ? contact.icon : 'alert'} size={24} color="#366732" />
                 </View>
                 <View style={styles.contactInfo}>
                   <Text style={styles.contactName}>{contact.name}</Text>

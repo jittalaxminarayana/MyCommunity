@@ -5,6 +5,184 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
+exports.sendToAllCommunityUsers = functions.https.onCall(async (data, context) => {
+  try {
+    const { communityId, title, body, extraData = {} } = data?.data;
+
+    console.log('Received data:', { communityId, title, body, extraData });
+
+    // Validate required parameters
+    if (!communityId || !title || !body) {
+      throw new functions.https.HttpsError(
+        'invalid-argument', 
+        'Missing required parameters: communityId, title, body'
+      );
+    }
+
+    // Get all users in the community
+    const usersCollectionRef = admin
+      .firestore()
+      .collection('communities')
+      .doc(communityId)
+      .collection('users');
+
+    const usersSnapshot = await usersCollectionRef.get();
+
+    if (usersSnapshot.empty) {
+      console.warn('No users found in community');
+      return { 
+        success: false, 
+        message: 'No users found in community',
+        totalUsers: 0,
+        sent: 0,
+        failed: 0,
+        cleaned: 0
+      };
+    }
+
+    // Collect all FCM tokens from all users
+    const allTokens = [];
+    const userTokenMap = new Map(); // Map to track which tokens belong to which users
+    
+    usersSnapshot.docs.forEach(userDoc => {
+      const userData = userDoc.data();
+      const fcmTokens = userData.tokens || userData.fcmTokens || [];
+      
+      fcmTokens.forEach(token => {
+        allTokens.push(token);
+        userTokenMap.set(token, {
+          userId: userDoc.id,
+          userData: userData,
+          userRef: userDoc.ref
+        });
+      });
+    });
+
+    if (allTokens.length === 0) {
+      console.warn('No FCM tokens found for any users in community');
+      return { 
+        success: false, 
+        message: 'No FCM tokens found for any users',
+        totalUsers: usersSnapshot.size,
+        sent: 0,
+        failed: 0,
+        cleaned: 0
+      };
+    }
+
+    console.log(`Found ${allTokens.length} tokens across ${usersSnapshot.size} users`);
+
+    // Convert extraData object values to strings (FCM requirement)
+    const stringifiedData = {};
+    Object.keys(extraData).forEach(key => {
+      stringifiedData[key] = String(extraData[key]);
+    });
+
+    const message = {
+      tokens: allTokens,
+      notification: { 
+        title, 
+        body 
+      },
+      data: stringifiedData,
+      // Add platform-specific configurations
+      android: {
+        notification: {
+          sound: 'default',
+          priority: 'high'
+        }
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1
+          }
+        }
+      }
+    };
+
+    const response = await admin.messaging().sendEachForMulticast(message);
+
+    // Track invalid tokens by user for cleanup
+    const invalidTokensByUser = new Map();
+    
+    response.responses.forEach((res, idx) => {
+      if (!res.success) {
+        const token = allTokens[idx];
+        const code = res.error?.code;
+        console.error('Error sending to token:', token, code);
+        
+        // Check for invalid token error codes
+        if (
+          code === 'messaging/invalid-registration-token' ||
+          code === 'messaging/registration-token-not-registered' ||
+          code === 'messaging/invalid-argument'
+        ) {
+          const userInfo = userTokenMap.get(token);
+          if (userInfo) {
+            if (!invalidTokensByUser.has(userInfo.userId)) {
+              invalidTokensByUser.set(userInfo.userId, {
+                userRef: userInfo.userRef,
+                userData: userInfo.userData,
+                tokens: []
+              });
+            }
+            invalidTokensByUser.get(userInfo.userId).tokens.push(token);
+          }
+        }
+      }
+    });
+
+    // Clean up invalid tokens for each user
+    let totalCleaned = 0;
+    const cleanupPromises = [];
+    
+    for (const [userId, userInfo] of invalidTokensByUser) {
+      const { userRef, userData, tokens: invalidTokens } = userInfo;
+      const fieldToUpdate = userData.tokens ? 'tokens' : 'fcmTokens';
+      
+      cleanupPromises.push(
+        userRef.update({
+          [fieldToUpdate]: admin.firestore.FieldValue.arrayRemove(...invalidTokens),
+        }).then(() => {
+          console.log(`Removed ${invalidTokens.length} invalid tokens for user ${userId}`);
+          totalCleaned += invalidTokens.length;
+        }).catch(error => {
+          console.error(`Failed to clean tokens for user ${userId}:`, error);
+        })
+      );
+    }
+
+    // Wait for all cleanup operations to complete
+    await Promise.all(cleanupPromises);
+
+    return {
+      success: true,
+      totalUsers: usersSnapshot.size,
+      totalTokens: allTokens.length,
+      sent: response.successCount,
+      failed: response.failureCount,
+      cleaned: totalCleaned,
+      message: `Successfully sent to ${response.successCount} devices across ${usersSnapshot.size} users`
+    };
+
+  } catch (error) {
+    console.error('Error in sendToAllCommunityUsers:', error);
+    
+    // Re-throw HttpsError as-is, wrap others
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    throw new functions.https.HttpsError(
+      'internal', 
+      'Failed to send notification to community users',
+      error.message
+    );
+  }
+});
+
 exports.sendToUserDevices = functions.https.onCall(async (data, context) => {
   try {
     const { communityId, userId, title, body, extraData = {} } = data?.data;

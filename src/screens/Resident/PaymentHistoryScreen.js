@@ -8,11 +8,18 @@ import {
     ActivityIndicator,
     Alert,
     Modal,
+    ToastAndroid,
+    Platform
 } from 'react-native';
 import { firebase } from '@react-native-firebase/firestore';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { format } from 'date-fns';
+import RNHTMLtoPDF from 'react-native-html-to-pdf';
+import Share from 'react-native-share';
+import RNFS from 'react-native-fs';
+import { request, check, PERMISSIONS, RESULTS } from 'react-native-permissions';
+
 
 const PaymentHistoryScreen = ({ navigation }) => {
     const userData = useSelector((state) => state.user.userData);
@@ -61,6 +68,261 @@ const PaymentHistoryScreen = ({ navigation }) => {
 
         fetchPaymentHistory();
     }, [communityData.id, userData.apartmentId]);
+
+    const generateHTML = (payment) => {
+        return `
+        <html>
+        <head>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                .header { text-align: center; margin-bottom: 20px; }
+                .logo { width: 100px; height: 100px; margin: 0 auto; }
+                .community-name { font-size: 22px; font-weight: bold; color: #366732; margin: 10px 0; }
+                .receipt-title { font-size: 18px; font-weight: bold; margin: 20px 0; text-align: center; }
+                .section { margin-bottom: 15px; }
+                .section-title { font-weight: bold; color: #366732; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 10px; }
+                .row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+                .label { font-weight: bold; color: #666; }
+                .value { color: #333; }
+                .success { color: #27ae60; font-weight: bold; }
+                .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #666; }
+                .signature { margin-top: 40px; border-top: 1px dashed #ccc; padding-top: 10px; text-align: right; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                ${communityData.profileImageUrl?.[0] ? 
+                    `<img src="${communityData?.profileImageUrl[0]}" class="logo" />` : 
+                    `<div class="logo">[Community Logo]</div>`
+                }
+                <div class="community-name">${communityData.name}</div>
+                <div>${communityData?.address}</div>
+                <div>Phone: ${communityData?.contactNumber} | Email: ${communityData?.contactEmail}</div>
+            </div>
+
+            <div class="receipt-title">PAYMENT RECEIPT</div>
+
+            <div class="section">
+                <div class="section-title">User Information</div>
+                <div class="row">
+                    <span class="label">Name:</span>
+                    <span class="value">${userData?.name}</span>
+                </div>
+                <div class="row">
+                    <span class="label">Apartment:</span>
+                    <span class="value">${userData?.apartmentId}</span>
+                </div>
+                <div class="row">
+                    <span class="label">Role:</span>
+                    <span class="value">${userData?.role}</span>
+                </div>
+                <div class="row">
+                    <span class="label">Occupancy Status:</span>
+                    <span class="value">${userData?.occupancyStatus}</span>
+                </div>
+                <div class="row">
+                    <span class="label">Contact:</span>
+                    <span class="value">${userData?.phoneNumber} | ${userData?.email}</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Payment Details</div>
+                <div class="row">
+                    <span class="label">Receipt Number:</span>
+                    <span class="value">${generateReceiptNumber(payment)}</span>
+                </div>
+                <div class="row">
+                    <span class="label">Payment Date:</span>
+                    <span class="value">${format(payment.paymentDate, 'MMM dd, yyyy h:mm a')}</span>
+                </div>
+                <div class="row">
+                    <span class="label">Payment For:</span>
+                    <span class="value">${payment.month} Maintenance</span>
+                </div>
+                <div class="row">
+                    <span class="label">Payment Mode:</span>
+                    <span class="value">${formatPaymentMode(payment.paymentMode)}</span>
+                </div>
+                <div class="row">
+                    <span class="label">Amount:</span>
+                    <span class="value">₹${payment.amount.toLocaleString()}</span>
+                </div>
+                <div class="row">
+                    <span class="label">Status:</span>
+                    <span class="value success">${payment.status}</span>
+                </div>
+                ${payment.notes ? `
+                <div class="row">
+                    <span class="label">Notes:</span>
+                    <span class="value">${payment.notes}</span>
+                </div>
+                ` : ''}
+            </div>
+
+            <div class="signature">
+                <div>Authorized Signature</div>
+            </div>
+
+            <div class="footer">
+                This is a computer generated receipt. No signature required.<br>
+                ${communityData?.name} | ${communityData?.address}<br>
+                Contact: ${communityData?.contactNumber} | ${communityData?.contactEmail}
+            </div>
+        </body>
+        </html>
+        `;
+    };
+
+    const generateAndDownloadPDF = async (payment) => {
+        try {
+            setShowReceiptModal(false);
+            
+            const options = {
+                html: generateHTML(payment),
+                fileName: `Receipt_${generateReceiptNumber(payment)}`,
+                directory: 'Downloads',
+            };
+
+            const file = await RNHTMLtoPDF.convert(options);
+            return file.filePath;
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            Alert.alert(
+                "Error",
+                "Failed to generate receipt. Please try again.",
+                [{ text: "OK" }]
+            );
+            return null;
+        }
+    };
+
+    const requestStoragePermission = async () => {
+        try {
+          if (Platform.OS === 'android') {
+            if (Platform.Version >= 33) {
+              // For Android 13+
+              const permissions = [
+                PERMISSIONS.ANDROID.READ_MEDIA_IMAGES,
+                PERMISSIONS.ANDROID.READ_MEDIA_VIDEO,
+              ];
+              
+              // Check permissions first
+              const checkResults = await Promise.all(
+                permissions.map(permission => check(permission))
+              );
+              
+              // If already granted, return true
+              if (checkResults.every(result => result === RESULTS.GRANTED)) {
+                return true;
+              }
+              
+              // Request permissions
+              const requestResults = await Promise.all(
+                permissions.map(permission => request(permission))
+              );
+              
+              return requestResults.every(result => result === RESULTS.GRANTED);
+            } else if (Platform.Version >= 29) {
+              // For Android 10-12
+              const checkResult = await check(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
+              
+              if (checkResult === RESULTS.GRANTED) {
+                return true;
+              }
+              
+              const requestResult = await request(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
+              return requestResult === RESULTS.GRANTED;
+            } else {
+              // For older Android versions
+              const checkResult = await check(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
+              
+              if (checkResult === RESULTS.GRANTED) {
+                return true;
+              }
+              
+              const requestResult = await request(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
+              return requestResult === RESULTS.GRANTED;
+            }
+          }
+          return true; // iOS doesn't need this permission
+        } catch (error) {
+          console.error('Permission request error:', error);
+          return false;
+        }
+      };
+
+      const downloadReceipt = async (payment) => {
+        try {
+          setShowReceiptModal(false);
+          
+          const hasPermission = await requestStoragePermission();
+          if (!hasPermission) {
+            ToastAndroid.show('Storage permission denied', ToastAndroid.SHORT);
+            return null;
+          }
+      
+          const htmlContent = generateHTML(payment);
+          const fileName = `Receipt_${generateReceiptNumber(payment)}.pdf`;
+          
+          // Use the public Downloads directory
+          const downloadDir = '/storage/emulated/0/Download'; 
+          const filePath = `${downloadDir}/${fileName}`;
+      
+          // Generate PDF options - let RNHTMLtoPDF handle the initial creation
+          const options = {
+            html: htmlContent,
+            fileName: fileName,
+            directory: 'Downloads', // This creates in app's cache initially
+          };
+      
+          const file = await RNHTMLtoPDF.convert(options);
+          
+          // Always move to public Downloads directory
+          await RNFS.moveFile(file.filePath, filePath);
+          
+          ToastAndroid.show(`Receipt saved to Downloads`, ToastAndroid.SHORT);
+          return filePath;
+          
+        } catch (error) {
+          console.error("Error generating PDF:", error);
+          ToastAndroid.show('Failed to save receipt', ToastAndroid.SHORT);
+          return null;
+        }
+      };
+
+    const shareReceipt = async (payment) => {
+        try {
+            setShowReceiptModal(false);
+            ToastAndroid.show('Sharing...', ToastAndroid.SHORT)
+            
+            // First generate the PDF
+            const pdfPath = await generateAndDownloadPDF(payment);
+            if (!pdfPath) return;
+
+            // Prepare share options
+            const shareOptions = {
+                title: 'Share Receipt',
+                message: `My payment receipt for ${payment.month} maintenance at ${communityData.name}`,
+                url: `file://${pdfPath}`,
+                type: 'application/pdf',
+            };
+
+            await Share.open(shareOptions);
+            
+            //delete the temporary file after sharing
+            await RNFS.unlink(pdfPath);
+        } catch (error) {
+            if (error.message !== 'User did not share') {
+                console.error("Error sharing receipt:", error);
+                Alert.alert(
+                    "Error",
+                    "Failed to share receipt. Please try again.",
+                    [{ text: "OK" }]
+                );
+            }
+        }
+    };
 
     // View payment receipt
     const handleViewReceipt = (payment) => {
@@ -158,11 +420,17 @@ const PaymentHistoryScreen = ({ navigation }) => {
                             </View>
                             
                             <View style={styles.paymentInfo}>
+
+                            <View style={styles.infoRow}>
+                                    <Text style={styles.infoLabel}>Paymet Type:</Text>
+                                    <Text style={styles.infoValue}>{payment.type}</Text>
+                                </View>
+
                                 <View style={styles.infoRow}>
                                     <Text style={styles.infoLabel}>Amount Paid:</Text>
                                     <Text style={styles.infoValue}>₹{payment.amount.toLocaleString()}</Text>
                                 </View>
-                                
+
                                 <View style={styles.infoRow}>
                                     <Text style={styles.infoLabel}>Payment Mode:</Text>
                                     <View style={styles.paymentModeContainer}>
@@ -217,7 +485,7 @@ const PaymentHistoryScreen = ({ navigation }) => {
                         </View>
 
                         {selectedPayment && (
-                            <ScrollView style={styles.receiptContainer}>
+                            <ScrollView showsVerticalScrollIndicator={false} style={styles.receiptContainer}>
                                 <View style={styles.receiptHeader}>
                                     <Icon name="check-circle" size={50} color="#366732" />
                                     <Text style={styles.receiptTitle}>Payment Successful</Text>
@@ -278,10 +546,7 @@ const PaymentHistoryScreen = ({ navigation }) => {
                                     style={styles.downloadButton}
                                     onPress={() => {
                                         setShowReceiptModal(false);
-                                        Alert.alert(
-                                            "Download Receipt", 
-                                            "Receipt download feature will be implemented in future updates."
-                                        );
+                                        downloadReceipt(selectedPayment);
                                     }}
                                 >
                                     <Icon name="download" size={20} color="#fff" />
@@ -292,10 +557,7 @@ const PaymentHistoryScreen = ({ navigation }) => {
                                     style={styles.shareButton}
                                     onPress={() => {
                                         setShowReceiptModal(false);
-                                        Alert.alert(
-                                            "Share Receipt", 
-                                            "Receipt sharing feature will be implemented in future updates."
-                                        );
+                                        shareReceipt(selectedPayment);
                                     }}
                                 >
                                     <Icon name="share-variant" size={20} color="#366732" />
@@ -501,6 +763,7 @@ const styles = StyleSheet.create({
     },
     receiptContainer: {
         padding: 16,
+        marginBottom:20
     },
     receiptHeader: {
         alignItems: 'center',

@@ -25,6 +25,8 @@ import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import Share from 'react-native-share';
 import RNFS from 'react-native-fs';
+import { functions } from '../../../services/firebase';
+import { httpsCallable } from 'firebase/functions';
 
 
 const Timeline = () => {
@@ -35,6 +37,7 @@ const Timeline = () => {
   const [isUploadModalVisible, setIsUploadModalVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const actionSheetRef = React.createRef();
   const navigation = useNavigation();
   const userData = useSelector((state) => state?.user?.userData);
@@ -101,6 +104,33 @@ const Timeline = () => {
     
     fetchUserDetails();
   }, [posts.length, communityData?.id]);
+
+  useEffect(() => {
+    if (!communityData?.id || !userData?.id) return;
+  
+    const unsubscribe = firebase.firestore()
+      .collection('communities')
+      .doc(communityData.id)
+      .collection('chats')
+      .where('seenBy', 'array-contains', userData.id)
+      .onSnapshot(snapshot => {
+        // Get total count of messages
+        firebase.firestore()
+          .collection('communities')
+          .doc(communityData.id)
+          .collection('chats')
+          .count()
+          .get()
+          .then(countSnapshot => {
+            const totalCount = countSnapshot.data().count;
+            const readCount = snapshot.size;
+            console.log("totalCount, readCount:",totalCount,readCount);
+            setUnreadCount(totalCount - readCount);
+          });
+      });
+  
+    return () => unsubscribe();
+  }, [communityData?.id, userData?.id]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -428,10 +458,15 @@ const Timeline = () => {
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           likes: [],
           attachments: attachmentUrls,
-          user:{apartmentId: userData.apartmentId,
-            name:userData.name
+          user:{apartmentId: userData?.apartmentId,
+            name:userData?.name,
+            profileImageUrl:userData?.profileImageUrl
           }
         });
+
+      // Send notification with the passId
+      await sendNotificationToAllUsers(communityData?.id, newPostText.trim(), attachmentUrls.length > 0);
+
 
       // Reset form
       setNewPostText('');
@@ -446,11 +481,57 @@ const Timeline = () => {
     }
   };
 
+  const sendNotificationToAllUsers = async (communityId, postContent, hasImages) => {
+    try {
+      const sendToAllUserDevices = httpsCallable(functions(), 'sendToAllCommunityUsers');
+
+      // Create personalized notification message
+      const userName = userData?.name || 'Someone';
+      const apartmentId = userData?.apartmentId ? ` (${userData.apartmentId})` : '';
+      
+      let notificationBody = '';
+      if (postContent && postContent.length > 0) {
+        // Truncate long posts for notification
+        const truncatedContent = postContent.length > 50 
+          ? postContent.substring(0, 50) + '...' 
+          : postContent;
+        
+        if (hasImages) {
+          notificationBody = `${userName}${apartmentId} shared: "${truncatedContent}" with photos`;
+        } else {
+          notificationBody = `${userName}${apartmentId} shared: "${truncatedContent}"`;
+        }
+      } else if (hasImages) {
+        notificationBody = `${userName}${apartmentId} shared photos in the community`;
+      } else {
+        notificationBody = `${userName}${apartmentId} posted something new`;
+      }
+
+      const result = await sendToAllUserDevices({
+        communityId: communityId,
+        title: "📱 New Community Post",
+        body: notificationBody,
+        extraData: {
+          screen: 'Home',
+          type: "community_post",
+          priority: "high",
+          posterId: userData?.id,
+          posterName: userName,
+          posterApartment: userData?.apartmentId
+        },
+      });
+
+      console.log('Notification Sent:', result.data);
+    } catch (error) {
+      console.error('Notification Error:', error);
+    }
+  };
+
   const renderPostItem = ({ item }) => (
     <View style={styles.postCard}>
       <View style={styles.postHeader}>
         <Image 
-          source={item.user?.profileImageUrl ? { uri: item.user.profileImageUrl } : require('../../../../assets/community.png')} 
+          source={item.user?.profileImageUrl ? { uri: item?.user?.profileImageUrl } : require('../../../../assets/community.png')} 
           style={styles.userAvatar} 
         />
         <View style={styles.headerTextContainer}>
@@ -546,11 +627,19 @@ const Timeline = () => {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Community Feed</Text>
         <TouchableOpacity
-          style={styles.chatButtion}
+          style={styles.chatButton}
           onPress={navigateToChat}
         >
-          <Icon name="chat-processing" size={25} color="#ffff" />
-          <Text style={styles.chatButtonText}>Group</Text>
+          <View style={styles.chatIconContainer}>
+            <Icon style={{bottom:-8}} name="chat-processing" size={30} color="#ffff" />
+            {unreadCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {unreadCount > 4 ? '4+' : unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
         </TouchableOpacity>
       </View>
       
@@ -560,11 +649,11 @@ const Timeline = () => {
         onPress={() => setIsUploadModalVisible(true)}
       >
         <View style={styles.createPostContent}>
-          {/* <Image 
-            source={userData?.profileImageUrl ? { uri: userData.profileImageUrl } : require('../../../assets/icon.png')} 
+          <Image 
+            source={userData?.profileImageUrl ? { uri: userData.profileImageUrl } : require('../../../../assets/community.png')} 
             style={styles.miniAvatar} 
-          /> */}
-          <Text style={styles.createPostText}>Share something with the community...</Text>
+          />
+          <Text style={styles.createPostText}>Share with the community...</Text>
         </View>
         <Icon name="image-plus" size={24} color="#666" />
       </TouchableOpacity>
@@ -708,7 +797,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
     textAlign: 'center',
-    marginLeft:70,
+    marginLeft:55,
     marginTop:5
   },
   createPostButton: {
@@ -728,10 +817,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   miniAvatar: {
-    width: 40,
-    height: 40,
+    width: 35,
+    height: 35,
     borderRadius: 20,
-    marginRight: 12,
+    marginRight: 14,
     backgroundColor: '#f0f0f0',
   },
   createPostText: {
@@ -895,6 +984,7 @@ const styles = StyleSheet.create({
   selectedImageContainer: {
     marginRight: 10,
     position: 'relative',
+    marginTop:10
   },
   selectedImage: {
     width: 100,
@@ -932,10 +1022,24 @@ const styles = StyleSheet.create({
     color: '#366732',
     fontWeight: '500',
   },
-  chatButtonText: {
-    fontSize: 14,
-    color: '#fff',
-    fontWeight: '500',
+  chatIconContainer: {
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    right: -5,
+    top: 3.5,
+    backgroundColor: '#f68422',
+    borderRadius: 10,
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   postButton: {
     backgroundColor: '#366732',

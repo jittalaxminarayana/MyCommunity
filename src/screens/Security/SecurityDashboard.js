@@ -265,6 +265,7 @@ const SecurityDashboard = ({ navigation }) => {
     };
 
     const handleCheckIn = async () => {
+      console.log("item to check:", item)
       // Check if already processed
       if (item.status !== 'pending') {
         Alert.alert(
@@ -368,7 +369,7 @@ const SecurityDashboard = ({ navigation }) => {
                     purpose: item.purpose || 'Visit',
                     entryTime: firestore.FieldValue.serverTimestamp(),
                     status: 'checked-in',
-                    vehicleNumber: item.vehicleNumber || '',
+                    vehicleNumber: item?.vehicleNumber || '',
                     gatePassId: item.id,
                     processedBy: userData?.id,
                     processedByName: userData?.name || 'Security',
@@ -756,7 +757,7 @@ const SecurityDashboard = ({ navigation }) => {
             {displayedEmergencyContacts.map(contact => (
               <TouchableOpacity key={contact.id} style={styles.contactCard}>
                 <View style={styles.contactIconContainer}>
-                  <Icon name={contact.icon} size={24} color="#366732" />
+                  <Icon name={contact?.icon ? contact.icon : 'alert'} size={24} color="#366732" />
                 </View>
                 <View style={styles.contactInfo}>
                   <Text style={styles.contactName}>{contact.name}</Text>

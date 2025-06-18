@@ -13,8 +13,10 @@ import {
   SafeAreaView,
   Keyboard,
   Modal,
-  Dimensions
+  Dimensions,
+  Alert,
 } from 'react-native';
+import ActionSheet from 'react-native-actionsheet';
 import { firebase } from '@react-native-firebase/firestore';
 import storage from '@react-native-firebase/storage';
 import { launchImageLibrary } from 'react-native-image-picker';
@@ -36,6 +38,8 @@ const ChatList = () => {
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const [selectedViewImage, setSelectedViewImage] = useState(null);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [selectedMessage, setSelectedMessage] = useState(null);
   
   const userData = useSelector((state) => state?.user?.userData);
   const communityData = useSelector((state) => state?.user?.communityData);
@@ -43,14 +47,16 @@ const ChatList = () => {
   const flatListRef = useRef(null);
   const inputRef = useRef(null);
   const navigation = useNavigation();
+  const actionSheetRef = useRef();
+  
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
-      if (Platform.OS === 'android') setKeyboardOffset(0); // Adjust offset when keyboard is open
+      if (Platform.OS === 'android') setKeyboardOffset(0);
     });
 
     const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      if (Platform.OS === 'android') setKeyboardOffset(-50); // Reset offset when keyboard is closed
+      if (Platform.OS === 'android') setKeyboardOffset(-50);
     });
 
     return () => {
@@ -67,6 +73,7 @@ const ChatList = () => {
           .collection('communities')
           .doc(communityData?.id)
           .collection('users')
+          .where('approved', '==', true)
           .get();
         
         const membersData = {};
@@ -85,9 +92,9 @@ const ChatList = () => {
     }
   }, [communityData?.id]);
 
-  // Fetch messages from Firebase
+  // Fetch messages from Firebase and track unread messages
   useEffect(() => {
-    if (!communityData?.id) return;
+    if (!communityData?.id || !userData?.id) return;
 
     const unsubscribe = firebase.firestore()
       .collection('communities')
@@ -95,12 +102,37 @@ const ChatList = () => {
       .collection('chats')
       .orderBy('timestamp', 'desc')
       .limit(50)
-      .onSnapshot(snapshot => {
-        const messageList = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          dateFormatted: doc.data().timestamp ? format(doc.data().timestamp.toDate(), 'h:mm a') : ''
-        }));
+      .onSnapshot(async (snapshot) => {
+        const messageList = [];
+        let newUnreadCount = 0;
+        
+        for (const doc of snapshot.docs) {
+          const message = {
+            id: doc.id,
+            ...doc.data(),
+            dateFormatted: doc.data().timestamp ? format(doc.data().timestamp.toDate(), 'h:mm a') : ''
+          };
+          
+          // Check if message is unread
+          if (!message.read?.includes(userData.id)) {
+            newUnreadCount++;
+            // Mark as read if not already
+            if (!message.read) {
+              await firebase.firestore()
+                .collection('communities')
+                .doc(communityData.id)
+                .collection('chats')
+                .doc(doc.id)
+                .update({
+                  read: firebase.firestore.FieldValue.arrayUnion(userData.id)
+                });
+            }
+          }
+          
+          messageList.push(message);
+        }
+        
+        setUnreadCount(newUnreadCount);
         setMessages(messageList.reverse());
         setLoading(false);
       }, error => {
@@ -109,7 +141,90 @@ const ChatList = () => {
       });
 
     return () => unsubscribe();
-  }, [communityData?.id]);
+  }, [communityData?.id, userData?.id]);
+
+  useEffect(() => {
+    if (!communityData?.id || !userData?.id) return;
+  
+    // Mark messages from OTHER users as seen when the chat is opened/messages are loaded
+    const markOtherMessagesAsSeen = async () => {
+      try {
+        const batch = firebase.firestore().batch();
+        const messagesRef = firebase.firestore()
+          .collection('communities')
+          .doc(communityData.id)
+          .collection('chats');
+  
+        // Get messages that are NOT from current user and NOT already seen by current user
+        const unSeenMessagesQuery = await messagesRef
+          .where('senderId', '!=', userData.id) // Only other users' messages
+          .get();
+  
+        let hasUpdates = false;
+  
+        unSeenMessagesQuery.docs.forEach(doc => {
+          const messageData = doc.data();
+          const seenBy = messageData.seenBy || [];
+          
+          // If current user hasn't seen this message yet, mark it as seen
+          if (!seenBy.includes(userData.id)) {
+            batch.update(doc.ref, {
+              seenBy: firebase.firestore.FieldValue.arrayUnion(userData.id)
+            });
+            hasUpdates = true;
+          }
+        });
+  
+        // Only commit if there are updates
+        if (hasUpdates) {
+          await batch.commit();
+        }
+      } catch (error) {
+        console.error('Error marking messages as seen:', error);
+      }
+    };
+  
+    // Mark messages as seen when chat opens
+    markOtherMessagesAsSeen();
+  
+    // Also mark new messages as seen when they arrive (for real-time updates)
+    const unsubscribeSeenUpdates = firebase.firestore()
+      .collection('communities')
+      .doc(communityData.id)
+      .collection('chats')
+      .where('senderId', '!=', userData.id)
+      .onSnapshot(async (snapshot) => {
+        const batch = firebase.firestore().batch();
+        let hasUpdates = false;
+  
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const messageData = change.doc.data();
+            const seenBy = messageData.seenBy || [];
+            
+            // If current user hasn't seen this new message, mark it as seen
+            if (!seenBy.includes(userData.id)) {
+              batch.update(change.doc.ref, {
+                seenBy: firebase.firestore.FieldValue.arrayUnion(userData.id)
+              });
+              hasUpdates = true;
+            }
+          }
+        });
+  
+        if (hasUpdates) {
+          try {
+            await batch.commit();
+          } catch (error) {
+            console.error('Error updating seen status for new messages:', error);
+          }
+        }
+      });
+  
+    return () => {
+      unsubscribeSeenUpdates();
+    };
+  }, [communityData?.id, userData?.id]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -145,7 +260,10 @@ const ChatList = () => {
           text: messageText.trim(),
           imageUrl: imageUrl,
           timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-          read: [userData.id]
+          read: [userData.id], // Keep this for backward compatibility
+          seenBy: [userData.id], // Mark your own message as seen by you
+          edited: false,
+          deleted: false
         });
       
       setMessageText('');
@@ -197,6 +315,71 @@ const ChatList = () => {
     setImageViewerVisible(true);
   };
 
+  const showOptionsMenu = () => {
+    actionSheetRef.current?.show();
+  };
+
+  const handleOptionSelect = (index) => {
+    if (index === 0) {
+      // Search
+      Alert.alert('Search functionality will be implemented');
+    } else if (index === 1) {
+      // Group Info
+      navigation.navigate('GroupInfo', { 
+        communityId: communityData.id,
+        members: members 
+      });
+    }
+  };
+  
+  const handleLongPressMessage = (message) => {
+    if (message.senderId !== userData.id) return;
+    
+    setSelectedMessage(message);
+    Alert.alert(
+      'Message Options',
+      'What would you like to do with this message?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteMessage(message.id),
+        },
+        {
+          text: 'Edit',
+          onPress: () => editMessage(message),
+        },
+      ]
+    );
+  };
+
+  const deleteMessage = async (messageId) => {
+    try {
+      await firebase.firestore()
+        .collection('communities')
+        .doc(communityData.id)
+        .collection('chats')
+        .doc(messageId)
+        .delete();
+    } catch (error) {
+      console.error('Error deleting message:', error);
+    }
+  };
+
+  const editMessage = (message) => {
+    setMessageText(message.text);
+    if (message.imageUrl) {
+      setSelectedImage({ uri: message.imageUrl });
+      setImagePreview(message.imageUrl);
+    }
+    inputRef.current.focus();
+    deleteMessage(message.id);
+  };
+
   const getMessageDateDisplay = (message, index) => {
     if (index === 0) return true;
     if (!message.timestamp || !messages[index - 1].timestamp) return false;
@@ -209,6 +392,7 @@ const ChatList = () => {
     const isCurrentUser = item.senderId === userData.id;
     const sender = members[item.senderId] || { name: 'Unknown User' };
     const showDateHeader = getMessageDateDisplay(item, index);
+    const isUnread = item.read && !item.read.includes(userData.id);
     
     return (
       <>
@@ -219,13 +403,18 @@ const ChatList = () => {
             </Text>
           </View>
         )}
-        <View style={[
-          styles.messageContainer,
-          isCurrentUser ? styles.currentUserMessageContainer : styles.otherUserMessageContainer
-        ]}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onLongPress={() => handleLongPressMessage(item)}
+          style={[
+            styles.messageContainer,
+            isCurrentUser ? styles.currentUserMessageContainer : styles.otherUserMessageContainer,
+            isUnread && styles.unreadMessage
+          ]}
+        >
           {!isCurrentUser && (
             <Image 
-              source={sender.profileImageUrl ? { uri: sender.profileImageUrl } : null} 
+              source={sender.profileImageUrl ? { uri: sender.profileImageUrl } : require('../../../../assets/community.png')} 
               style={styles.messageAvatar}
             />
           )}
@@ -251,9 +440,19 @@ const ChatList = () => {
               </TouchableOpacity>
             )}
             
-            <Text style={styles.messageTime}>{item.dateFormatted}</Text>
+            <View style={styles.messageTimeContainer}>
+              <Text style={styles.messageTime}>{item.dateFormatted}</Text>
+              {isCurrentUser && (
+                <Icon 
+                  name={item.read?.length > 1 ? "check-all" : "check"} 
+                  size={16} 
+                  color={item.read?.length > 1 ? "#4CAF50" : "#888"} 
+                  style={styles.readIcon}
+                />
+              )}
+            </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </>
     );
   };
@@ -265,7 +464,7 @@ const ChatList = () => {
       <View style={styles.imagePreviewContainer}>
         <Image source={{ uri: imagePreview }} style={styles.imagePreview} resizeMode="cover" />
         <TouchableOpacity style={styles.cancelImageButton} onPress={cancelImageUpload}>
-          <Icon name="close-circle" size={22} color="#f68422" />
+          <Icon name="close-circle" size={24} color="#f68422" />
         </TouchableOpacity>
       </View>
     );
@@ -295,15 +494,30 @@ const ChatList = () => {
             <Icon name="arrow-left" size={25} color="#fff" />
           </TouchableOpacity>
   
-          <View style={styles.titleContainer}>
-            <Text style={styles.headerTitle}>Community Chat</Text>
-          </View>
+          <TouchableOpacity 
+            style={styles.titleContainer}
+            onPress={() => navigation.navigate('GroupInfo', { 
+              communityId: communityData.id,
+              members: members 
+            })}
+          >
+            <Image 
+              source={communityData?.images?.[0] ? { uri: communityData.images[0] } : require('../../../../assets/community.png')}
+              style={styles.communityImageSmall}
+            />
+            <View style={styles.titleTextContainer}>
+              <Text style={styles.headerTitle}>
+                {communityData?.name?.split(' ').slice(0, 2).join(' ')}
+              </Text>
+              <Text style={styles.memberCount}>
+                {Object.keys(members).length} members
+              </Text>
+            </View>
+          </TouchableOpacity>
   
-          <View style={styles.onlineIndicator}>
-            <Text style={styles.memberCountText}>
-              {Object.keys(members).length} Members
-            </Text>
-          </View>
+          <TouchableOpacity onPress={showOptionsMenu}>
+            <Icon name="dots-vertical" size={25} color="#fff" />
+          </TouchableOpacity>
         </View>
         
         {/* Messages List */}
@@ -365,7 +579,8 @@ const ChatList = () => {
             )}
           </TouchableOpacity>
         </View>
-        </SafeAreaView>
+      </SafeAreaView>
+      
       {/* Image Viewer Modal */}
       <Modal
         visible={imageViewerVisible}
@@ -389,6 +604,14 @@ const ChatList = () => {
           )}
         </View>
       </Modal>
+
+      <ActionSheet
+        ref={actionSheetRef}
+        title={'Chat Options'}
+        options={['Search', 'Group Info', 'Cancel']}
+        cancelButtonIndex={3}
+        onPress={handleOptionSelect}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -414,28 +637,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: Platform.OS === 'ios' ? 0 : 30
   },
+  communityImageSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10,
+  },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#fff',
     textAlign: 'center',
   },
   titleContainer: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 10,
   },
-  onlineIndicator: {
-    padding: 5,
+  titleTextContainer: {
+    flexDirection:'column'
   },
-  memberCountText: {
+  memberCount: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
+    marginTop: 2,
   },
   backButton: {
     padding: 5,
-  },
-  keyboardAvoidingContainer: {
-    flex: 1,
   },
   messagesContainer: {
     flex: 1,
@@ -467,6 +696,11 @@ const styles = StyleSheet.create({
   },
   otherUserMessageContainer: {
     justifyContent: 'flex-start',
+  },
+  unreadMessage: {
+    opacity: 0.8,
+    backgroundColor: 'rgba(54, 103, 50, 0.1)',
+    borderRadius: 8,
   },
   messageAvatar: {
     width: 32,
@@ -505,11 +739,18 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginVertical: 4,
   },
+  messageTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+  },
   messageTime: {
     fontSize: 12,
     color: '#888',
-    alignSelf: 'flex-end',
-    marginTop: 4,
+  },
+  readIcon: {
+    marginLeft: 4,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -517,9 +758,14 @@ const styles = StyleSheet.create({
     padding: 8,
     paddingHorizontal: 12,
     backgroundColor: '#fff',
-    // borderTopWidth: 1,
-    // borderTopColor: '#e0e0e0',
-    paddingBottom:15
+    paddingBottom: 15,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
   },
   attachButton: {
     padding: 8,
@@ -533,7 +779,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     maxHeight: 100,
     fontSize: 16,
-    marginHorizontal: 8,
+    marginHorizontal: 6,
     backgroundColor: '#f9f9f9',
   },
   sendButton: {
@@ -576,18 +822,17 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   imagePreviewContainer: {
-    backgroundColor: '#f0f0f0',
     padding: 8,
     position: 'relative',
   },
   imagePreview: {
-    height: 100,
+    height: 250,
     borderRadius: 8,
     marginHorizontal: 8,
   },
   cancelImageButton: {
     position: 'absolute',
-    top: 0,
+    top: -6,
     right: 0,
     backgroundColor: '#fff',
     borderRadius: 12,

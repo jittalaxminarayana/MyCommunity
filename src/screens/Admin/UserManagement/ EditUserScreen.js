@@ -28,8 +28,8 @@ const EditUserScreen = () => {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [apartmentId, setApartmentId] = useState('');
-  const [role, setRole] = useState('resident');
-  const [occupancyStatus, setOccupancyStatus] = useState('tenant');
+  const [role, setRole] = useState('Resident');
+  const [occupancyStatus, setOccupancyStatus] = useState('Tenant');
   const [approved, setApproved] = useState(true);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -203,7 +203,7 @@ const EditUserScreen = () => {
 
             <Text style={styles.label}>Role</Text>
             <View style={styles.radioGroup}>
-              {['resident', 'admin', 'security'].map((r) => (
+              {['Resident', 'Admin', 'Security'].map((r) => (
                 <TouchableOpacity
                   key={r}
                   style={[
@@ -224,7 +224,7 @@ const EditUserScreen = () => {
 
             <Text style={styles.label}>Occupancy Status</Text>
             <View style={styles.radioGroup}>
-              {['owner', 'tenant'].map((status) => (
+              {['Owner', 'Tenant'].map((status) => (
                 <TouchableOpacity
                   key={status}
                   style={[

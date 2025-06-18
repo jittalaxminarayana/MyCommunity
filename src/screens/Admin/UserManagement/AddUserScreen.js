@@ -27,7 +27,7 @@ const AddUserScreen = () => {
   const [phone, setPhone] = useState('');
   const [apartmentId, setApartmentId] = useState('');
   const [role, setRole] = useState('Resident');
-  const [occupancyStatus, setOccupancyStatus] = useState('tenant');
+  const [occupancyStatus, setOccupancyStatus] = useState('Tenant');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -147,7 +147,7 @@ const AddUserScreen = () => {
 
             <Text style={styles.label}>Occupancy Status</Text>
             <View style={styles.radioGroup}>
-              {['owner', 'tenant'].map((status) => (
+              {['Owner', 'Tenant'].map((status) => (
                 <TouchableOpacity
                   key={status}
                   style={[

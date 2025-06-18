@@ -232,6 +232,19 @@ const AdminDashboard = () => {
     setShowDateModal(false);
   };
 
+  const getCategoryStyle = (category) => {
+    switch (category) {
+      case 'event':
+        return styles.eventCategory;
+      case 'announcement':
+        return styles.announcementCategory;
+      case 'emergency':
+        return styles.emergencyCategory;
+      default:
+        return {};
+    }
+  };
+
   const renderMaintenanceSection = () => {
     const months = [
       'January', 'February', 'March', 'April', 'May', 'June',
@@ -308,7 +321,7 @@ const AdminDashboard = () => {
         <Modal
           visible={showDateModal}
           transparent={true}
-          animationType="slide"
+          animationType="fade"
           onRequestClose={handleDateModalCancel}
         >
           <View style={styles.modalOverlay}>
@@ -612,7 +625,7 @@ const AdminDashboard = () => {
           renderItem={({ item }) => (
             <View style={styles.noticeCard}>
               <View style={styles.noticeHeader}>
-                <View style={styles.noticeCategoryBadge}>
+                <View style={[styles.noticeCategoryBadge,getCategoryStyle(item.category)]}>
                   <Icon
                     name={
                       item.category === 'event' ? 'calendar-star' :
@@ -1238,10 +1251,18 @@ const styles = StyleSheet.create({
   noticeCategoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#366732',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  eventCategory: {
+    backgroundColor: '#366732',
+  },
+  announcementCategory: {
+    backgroundColor: '#f68422',
+  },
+  emergencyCategory: {
+    backgroundColor: '#e74c3c',
   },
   noticeCategoryText: {
     color: '#fff',
@@ -1455,7 +1476,7 @@ modalContent: {
 },
 modalFooter: {
   flexDirection: 'row',
-  justifyContent: 'flex-end',
+  justifyContent: 'space-between',
   padding: 15,
   borderTopWidth: 1,
   borderTopColor: '#eee',

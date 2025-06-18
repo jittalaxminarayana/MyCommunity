@@ -21,8 +21,8 @@ const NoticeBoard = ({navigation}) => {
       .doc(communityData.id)
       .collection('notices')
       .where('expireAt', '>', currentDate) // Only get notices that haven't expired
-      .orderBy('expireAt', 'asc') // Optionally sort by expiration date
-      .orderBy('createdAt', 'desc')
+      .orderBy('expireAt', 'asc') // First sort by expiration date ascending
+      .orderBy('createdAt', 'desc') // Then sort by creation date descending (latest first)
       .onSnapshot(snapshot => {
         const noticeList = snapshot.docs.map(doc => {
           const data = doc.data();
@@ -34,6 +34,13 @@ const NoticeBoard = ({navigation}) => {
               : 'Unknown'
           };
         });
+        
+        // Additional client-side sorting to ensure latest posts are truly on top
+        noticeList.sort((a, b) => {
+          if (!a.createdAt || !b.createdAt) return 0;
+          return b.createdAt.toDate() - a.createdAt.toDate(); // Descending order (latest first)
+        });
+        
         setNotices(noticeList);
         setLoading(false);
       }, error => {

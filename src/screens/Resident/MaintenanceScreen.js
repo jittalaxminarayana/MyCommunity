@@ -29,7 +29,6 @@ const MaintenanceScreen = ({ navigation }) => {
     const [selectedDue, setSelectedDue] = useState(null);
     const [processingPayment, setProcessingPayment] = useState(false);
 
-    // Fetch maintenance dues
     useEffect(() => {
         const fetchMaintenanceDues = async () => {
             try {
@@ -37,7 +36,8 @@ const MaintenanceScreen = ({ navigation }) => {
                     .collection('communities')
                     .doc(communityData.id)
                     .collection('maintenanceDues')
-                    .where('apartmentId', '==', userData.apartmentId);
+                    .where('apartmentId', '==', userData.apartmentId)
+                    .where('status', 'in', ['pending', 'overdue']); // Only fetch pending/overdue
 
                 const unsubscribe = duesRef.onSnapshot((snapshot) => {
                     const dues = [];
@@ -49,7 +49,6 @@ const MaintenanceScreen = ({ navigation }) => {
                             createdAt: doc.data().createdAt?.toDate() || new Date(),
                         });
                     });
-                    // Sort the dues by dueDate in client side instead
                     dues.sort((a, b) => b.dueDate - a.dueDate);
                     setMaintenanceDues(dues);
                     setLoading(false);
@@ -108,13 +107,17 @@ const MaintenanceScreen = ({ navigation }) => {
     const processPayment = async () => {
         if (!selectedDue) return;
 
+        const now = new Date();
+        const month = now.toLocaleString('default', { month: 'long' }); // e.g., "May"
+        const year = now.getFullYear(); // e.g., 2025
+      
         setProcessingPayment(true);
         try {
             // Create payment record
             const paymentRef = await firebase.firestore()
                 .collection('communities')
                 .doc(communityData.id)
-                .collection('payments')
+                .collection('paymentHistory')
                 .add({
                     userId: userData.id,
                     userName: userData.name,
@@ -127,7 +130,10 @@ const MaintenanceScreen = ({ navigation }) => {
                     paymentMode: selectedPaymentMethod,
                     month: selectedDue.month,
                     transactionId: `TXN${Math.floor(100000 + Math.random() * 900000)}`, // Mock transaction ID
-                    paymentNote: `Paid via ${selectedPaymentMethod}`
+                    type:'Monthly maintenance',
+                    notes: `Paid via ${selectedPaymentMethod}`,
+                    status:'Completed',
+                    month: `${month} ${year}`,
                 });
 
             // Update maintenance due status
@@ -169,6 +175,58 @@ const MaintenanceScreen = ({ navigation }) => {
         }
     };
 
+    if (loading) {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => navigation.goBack()}
+                    >
+                        <Icon name="arrow-left" size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Maintenance Dues</Text>
+                    <View style={styles.headerRightSpace}></View>
+                </View>
+                <View style={styles.loaderContainer}>
+                    <ActivityIndicator size="large" color="#366732" />
+                    <Text style={styles.loaderText}>Loading maintenance dues...</Text>
+                </View>
+            </View>
+        );
+    }
+
+    if (maintenanceDues.length === 0) {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => navigation.goBack()}
+                    >
+                        <Icon name="arrow-left" size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Maintenance Dues</Text>
+                    <View style={styles.headerRightSpace}></View>
+                </View>
+                <View style={styles.emptyContainer}>
+                    <Icon name="check-circle-outline" size={80} color="#366732" />
+                    <Text style={styles.emptyText}>No pending maintenance dues</Text>
+                    <Text style={styles.emptySubText}>
+                        You're all caught up with payments!{'\n'}
+                        Check Payment History for receipts
+                    </Text>
+                    <TouchableOpacity 
+                        style={styles.historyButton}
+                        onPress={() => navigation.navigate('PaymentHistoryScreen')}
+                    >
+                        <Text style={styles.historyButtonText}>View Payment History</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        );
+    }
+
     return (
         <View style={styles.container}>
             <View style={styles.header}>
@@ -182,18 +240,6 @@ const MaintenanceScreen = ({ navigation }) => {
                 <View style={styles.headerRightSpace}></View>
             </View>
 
-            {loading ? (
-                <View style={styles.loaderContainer}>
-                    <ActivityIndicator size="large" color="#366732" />
-                    <Text style={styles.loaderText}>Loading maintenance dues...</Text>
-                </View>
-            ) : maintenanceDues.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                    <Icon name="check-circle-outline" size={80} color="#366732" />
-                    <Text style={styles.emptyText}>No maintenance dues found</Text>
-                    <Text style={styles.emptySubText}>You're all caught up!</Text>
-                </View>
-            ) : (
                 <ScrollView style={styles.contentContainer}>
                     <Text style={styles.sectionTitle}>Your Maintenance Dues</Text>
                     <Text style={styles.apartmentInfo}>
@@ -253,21 +299,10 @@ const MaintenanceScreen = ({ navigation }) => {
                                     <Text style={styles.payButtonText}>Pay Now</Text>
                                 </TouchableOpacity>
                             )}
-                            
-                            {due.status === 'paid' && due.paymentId && (
-                                <TouchableOpacity 
-                                    style={styles.receiptButton}
-                                    onPress={() => navigation.navigate('PaymentReceiptScreen', { paymentId: due.paymentId })}
-                                >
-                                    <Icon name="receipt" size={20} color="#366732" />
-                                    <Text style={styles.receiptButtonText}>View Receipt</Text>
-                                </TouchableOpacity>
-                            )}
                         </View>
                     ))}
                 </ScrollView>
-            )}
-
+        
             {/* Payment Modal */}
             <Modal
                 visible={showPaymentModal}
@@ -403,6 +438,18 @@ const styles = StyleSheet.create({
         color: '#fff',
         flex: 1,
         textAlign: 'center',
+    },
+    historyButton: {
+        marginTop: 20,
+        backgroundColor: '#366732',
+        paddingVertical: 12,
+        paddingHorizontal: 24,
+        borderRadius: 8,
+    },
+    historyButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 'bold',
     },
     backButton: {
         padding: 5,

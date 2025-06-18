@@ -152,18 +152,18 @@ const AllGatePassRequestsScreen = ({ navigation }) => {
                 .collection('visitors')
                 .add({
                   visitorName: item.visitorName,
-                  visitorPhone: item.visitorPhone,
-                  hostUserId: item.requestedBy,
-                  hostName: item.requestedByName,
-                  apartmentId: item.apartmentId,
-                  purpose: item.purpose,
-                  entryTime: firestore.FieldValue.serverTimestamp(),
-                  status: 'checked-in',
-                  vehicleNumber: item.vehicleNumber || '',
-                  gatePassId: item.id,
-                  processedBy: userData?.id,
-                  processedByName: userData?.displayName || 'Security',
-                  pinCode: item.pinCode
+                    visitorPhone: item.visitorPhone,
+                    hostUserId: item.requestedByUserId,
+                    hostName: item.requestedByName,
+                    apartmentId: item.apartmentId,
+                    purpose: item.purpose || 'Visit',
+                    entryTime: firestore.FieldValue.serverTimestamp(),
+                    status: 'checked-in',
+                    vehicleNumber: item?.vehicleNumber || '',
+                    gatePassId: item.id,
+                    processedBy: userData?.id,
+                    processedByName: userData?.name || 'Security',
+                    pinCode: item.pinCode
                 });
 
               Alert.alert("Check In Successful", `${item.visitorName} has been checked in`);
