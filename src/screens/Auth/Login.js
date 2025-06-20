@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 15,
     borderBottomRightRadius: 15,
     alignItems: 'center',
-    elevation: 3,
+    // elevation: 3,
   },
   headerTitle: {
     color: '#fff',

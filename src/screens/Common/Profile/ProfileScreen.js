@@ -897,7 +897,9 @@ const ProfileScreen = () => {
               <>
                 <Text style={styles.profileName}>{userData?.name || 'Community Member'}</Text>
                 <Text style={styles.apartmentId}>{userData?.apartmentId || 'No Apartment'}</Text>
-                <Text style={styles.profileEmail}>{userData?.role || ''}</Text>
+                <Text style={styles.profileEmail}>{userData?.role && userData?.occupancyStatus
+                  ? `${userData.occupancyStatus}/ ${userData.role} `
+                  : userData?.role || userData?.occupancyStatus || ''}</Text>
                 <Text style={styles.profilePhone}>{userData?.phoneNumber || 'No Phone'}</Text>
               </>
             ) : (

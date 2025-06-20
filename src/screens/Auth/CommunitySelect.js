@@ -7,7 +7,8 @@ import {
   TouchableOpacity, 
   ActivityIndicator,
   StatusBar,
-  SafeAreaView
+  SafeAreaView,
+  TextInput
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
@@ -15,6 +16,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const CommunitySelect = () => {
   const [communities, setCommunities] = useState([]);
+  const [filteredCommunities, setFilteredCommunities] = useState([]);
+  const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const navigation = useNavigation();
@@ -34,6 +37,7 @@ const CommunitySelect = () => {
         }));
         
         setCommunities(communitiesData);
+        setFilteredCommunities(communitiesData);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching communities:', err);
@@ -45,10 +49,26 @@ const CommunitySelect = () => {
     fetchCommunities();
   }, []);
 
+  useEffect(() => {
+    if (searchText.trim() === '') {
+      setFilteredCommunities(communities);
+    } else {
+      const filtered = communities.filter(community => 
+        community.name.toLowerCase().includes(searchText.toLowerCase()) ||
+        community.address.toLowerCase().includes(searchText.toLowerCase())
+      );
+      setFilteredCommunities(filtered);
+    }
+  }, [searchText, communities]);
+
   const handleSelectCommunity = (community) => {
     navigation.navigate('Login', { 
       community: community,
     });
+  };
+
+  const handleRegisterCommunity = () => {
+    navigation.navigate('CommunityRegistration');
   };
 
   const renderCommunityCard = ({ item }) => {
@@ -93,7 +113,6 @@ const CommunitySelect = () => {
           onPress={() => {
             setError(null);
             setCommunities([]);
-            // Re-run the effect
             setLoading(true);
           }}
         >
@@ -112,14 +131,29 @@ const CommunitySelect = () => {
         <Text style={styles.subtitle}>Select your community to continue</Text>
       </View>
       
-      {communities.length === 0 ? (
+      <View style={styles.searchContainer}>
+        <Icon name="magnify" size={20} color="#666" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search communities..."
+          placeholderTextColor="#999"
+          value={searchText}
+          onChangeText={setSearchText}
+        />
+      </View>
+      
+      {filteredCommunities.length === 0 ? (
         <View style={styles.noCommunities}>
           <Icon name="home-remove" size={60} color="#666" />
-          <Text style={styles.noCommunityText}>No communities available</Text>
+          <Text style={styles.noCommunityText}>
+            {searchText.trim() === '' 
+              ? 'No communities available' 
+              : 'No communities found matching your search'}
+          </Text>
         </View>
       ) : (
         <FlatList
-          data={communities}
+          data={filteredCommunities}
           renderItem={renderCommunityCard}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
@@ -129,9 +163,9 @@ const CommunitySelect = () => {
       )}
       
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Don't see your community?</Text>
-        <TouchableOpacity>
-          <Text style={styles.contactAdmin}>Contact Administrator</Text>
+        <Text style={styles.footerText}>Want to register community?</Text>
+        <TouchableOpacity onPress={handleRegisterCommunity}>
+          <Text style={styles.registerLink}>Click here</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -163,6 +197,27 @@ const styles = StyleSheet.create({
     color: '#e6f2ff',
     marginBottom: 10,
   },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 25,
+    paddingHorizontal: 15,
+    margin: 15,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    height: 45,
+    color: '#333',
+  },
   listContainer: {
     padding: 15,
     paddingBottom: 30,
@@ -171,7 +226,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 15,
+    padding: 12,
     marginBottom: 15,
     elevation: 3,
     shadowColor: '#000',
@@ -272,11 +327,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#444',
   },
-  contactAdmin: {
+  registerLink: {
     fontSize: 14,
     color: '#f68422',
     fontWeight: 'bold',
     marginTop: 5,
+    textDecorationLine: 'underline',
   },
 });
 
