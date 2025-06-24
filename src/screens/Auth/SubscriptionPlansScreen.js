@@ -1,40 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
   ActivityIndicator,
   Modal,
   Pressable,
-  Alert,
-  Linking
+  Alert
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import RazorpayCheckout from 'react-native-razorpay';
 import firestore from '@react-native-firebase/firestore';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { RAZORPAY_KEY_ID } from '@env';
 
 const SubscriptionPlansScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const { communityData } = route.params;
-  
+
   const [loading, setLoading] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [subscriptionData, setSubscriptionData] = useState(null);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
 
   useEffect(() => {
     calculateSubscription();
   }, []);
 
   const calculateSubscription = () => {
-    const flats = parseInt(communityData.totalResidents) || 0;
-    const maintenance = parseFloat(communityData.monthlyMaintenanceAmount) || 2000;
-    
+    const flats = parseInt(communityData.totalResidents) || 1; // Ensure minimum 1
+    const maintenance = parseFloat(communityData.monthlyMaintenanceAmount) || 0;
+
+
     // These values can be adjusted as needed
     const razorpayRate = 2;
     const gstRate = 18;
@@ -71,33 +71,33 @@ const SubscriptionPlansScreen = () => {
     const dailyImageUploads = (dailyPosts * avgImagesPerPost) + (userProfiles * 2);
     const dailyReads = dailyLogins * 5 + dailyActiveUsers * 15 + chatMessages * 0.5;
     const dailyWrites = dailyPosts + userProfiles + chatMessages + dailyLogins * 0.5;
-    
+
     const monthlyReads = dailyReads * 30;
     const monthlyWrites = dailyWrites * 30;
     const monthlyImages = dailyImageUploads * 30;
     const monthlyStorageSize = monthlyImages * avgImageSize / 1024;
     const monthlyBandwidth = monthlyImages * avgImageSize * 2 / 1024;
     const monthlyFunctionCalls = (dailyLogins + dailyPosts + userProfiles) * 30 * 3;
-    
+
     const freeMonthlyReads = FIREBASE_PRICING.freeTier.reads * 30;
     const freeMonthlyWrites = FIREBASE_PRICING.freeTier.writes * 30;
     const freeMonthlyStorage = FIREBASE_PRICING.freeTier.storage;
     const freeMonthlyBandwidth = FIREBASE_PRICING.freeTier.bandwidth;
-    
+
     const billableReads = Math.max(0, monthlyReads - freeMonthlyReads);
     const billableWrites = Math.max(0, monthlyWrites - freeMonthlyWrites);
     const billableStorage = Math.max(0, monthlyStorageSize - freeMonthlyStorage);
     const billableBandwidth = Math.max(0, monthlyBandwidth - freeMonthlyBandwidth);
-    
+
     const readsCost = billableReads * FIREBASE_PRICING.reads;
     const writesCost = billableWrites * FIREBASE_PRICING.writes;
     const storageCost = billableStorage * FIREBASE_PRICING.storage;
     const bandwidthCost = billableBandwidth * FIREBASE_PRICING.bandwidth;
     const smsCost = smsAuth * FIREBASE_PRICING.sms;
     const functionsCost = monthlyFunctionCalls * FIREBASE_PRICING.functions;
-    
+
     const totalFirebaseCost = readsCost + writesCost + storageCost + bandwidthCost + smsCost + functionsCost;
-    
+
     // Calculate subscription costs
     const totalMaintenance = flats * maintenance;
     const razorpayCharges = (totalMaintenance * razorpayRate) / 100;
@@ -159,65 +159,6 @@ const SubscriptionPlansScreen = () => {
     });
   };
 
-  const paymentMethods = [
-    {
-      id: 'card',
-      name: 'Card',
-      subtitle: 'Credit/Debit Card',
-      icon: 'credit-card',
-      color: '#4CAF50'
-    },
-    {
-      id: 'upi',
-      name: 'UPI ID',
-      subtitle: 'Enter UPI ID',
-      icon: 'account-arrow-right',
-      color: '#FF9800'
-    },
-    {
-      id: 'qr',
-      name: 'QR Code',
-      subtitle: 'Scan & Pay',
-      icon: 'qrcode-scan',
-      color: '#2196F3'
-    },
-    {
-      id: 'gpay',
-      name: 'Google Pay',
-      subtitle: 'Pay with GPay',
-      icon: 'google',
-      color: '#4285F4'
-    },
-    {
-      id: 'phonepe',
-      name: 'PhonePe',
-      subtitle: 'Pay with PhonePe',
-      icon: 'cellphone',
-      color: '#5F259F'
-    },
-    {
-      id: 'paytm',
-      name: 'Paytm',
-      subtitle: 'Pay with Paytm',
-      icon: 'wallet',
-      color: '#00BAF2'
-    },
-    {
-      id: 'amazonpay',
-      name: 'Amazon Pay',
-      subtitle: 'Pay with Amazon',
-      icon: 'amazon',
-      color: '#FF9900'
-    },
-    {
-      id: 'netbanking',
-      name: 'Net Banking',
-      subtitle: 'All Banks',
-      icon: 'bank',
-      color: '#795548'
-    }
-  ];
-
   const handlePlanSelect = (plan) => {
     setSelectedPlan(plan);
   };
@@ -230,13 +171,10 @@ const SubscriptionPlansScreen = () => {
     setShowPaymentModal(true);
   };
 
-  const handlePaymentMethodSelect = (method) => {
-    setSelectedPaymentMethod(method);
-  };
 
   const processPayment = () => {
-    if (!selectedPaymentMethod) {
-      Alert.alert('Error', 'Please select a payment method');
+    if (!RAZORPAY_KEY_ID) {
+      Alert.alert("Error", "Payment gateway configuration error");
       return;
     }
 
@@ -245,65 +183,52 @@ const SubscriptionPlansScreen = () => {
 
     const options = {
       description: `${selectedPlan.period} Subscription - ${selectedPlan.duration}`,
-      image: 'https://your-logo-url.png',
+      image: communityData?.profileImageUrl ? communityData.profileImageUrl: 'https://img.freepik.com/free-vector/user-circles-set_78370-4704.jpg',
       currency: 'INR',
-      key: 'rzp_test_YOUR_RAZORPAY_KEY', // Replace with your Razorpay key
-      amount: selectedPlan.price * 100, // in paise
+      key: RAZORPAY_KEY_ID,
+      amount: selectedPlan.price * 100,
       name: communityData.name,
       prefill: {
         email: communityData.contactEmail,
         contact: communityData.contactPhone,
         name: communityData.name + ' Community'
       },
-      theme: { color: '#366732' },
-      method: getPaymentMethod(selectedPaymentMethod.id),
-      config: getPaymentConfig(selectedPaymentMethod.id)
+      theme: { color: '#366732' }
     };
 
     RazorpayCheckout.open(options)
       .then(async (data) => {
-        // Payment success
-        await completeRegistration(data);
-        Alert.alert(
-          'Payment Successful! 🎉', 
-          'Your community has been registered successfully. Welcome aboard!',
-          [
-            { text: 'Continue', onPress: () => navigation.navigate('CommunitySelect') }
-          ]
-        );
+        try {
+          await completeRegistration(data);
+          Alert.alert(
+            'Payment Successful! 🎉',
+            'Your community has been registered successfully.',
+            [{ text: 'Continue', onPress: () => navigation.navigate('CommunitySelect') }]
+          );
+        } catch (error) {
+          console.error('Registration error:', error);
+          Alert.alert(
+            'Payment Successful but Registration Failed',
+            'Please contact support with your payment ID: ' + data.razorpay_payment_id
+          );
+        }
       })
       .catch((error) => {
-        // Payment failure
-        Alert.alert('Payment Failed', error.description || 'Payment was not completed. Please try again.');
+        if (error.code !== 2) { // Ignore user cancellation
+          Alert.alert('Payment Failed', error.description || 'Payment was not completed');
+        }
       })
       .finally(() => {
         setLoading(false);
       });
   };
 
-  const getPaymentMethod = (methodId) => {
-    const methodMap = {
-      'card': 'card',
-      'upi': 'upi',
-      'qr': 'upi',
-      'gpay': 'upi',
-      'phonepe': 'upi',
-      'paytm': 'wallet',
-      'amazonpay': 'wallet',
-      'netbanking': 'netbanking'
-    };
-    return methodMap[methodId] || 'card';
-  };
-
-  const getPaymentConfig = (methodId) => {
-    if (methodId === 'gpay') {
-      return { 'upi': { 'flow': 'intent', 'apps': ['googlepay'] } };
-    } else if (methodId === 'phonepe') {
-      return { 'upi': { 'flow': 'intent', 'apps': ['phonepe'] } };
-    } else if (methodId === 'paytm') {
-      return { 'wallet': { 'paytm': true } };
+  const handleBack = () => {
+    if (loading) {
+      Alert.alert("Payment in progress", "Please wait or cancel the payment");
+      return;
     }
-    return {};
+    navigation.goBack();
   };
 
   const completeRegistration = async (paymentData) => {
@@ -318,7 +243,6 @@ const SubscriptionPlansScreen = () => {
         subscriptionEndDate: calculateEndDate(selectedPlan.period.toLowerCase()),
         paymentStatus: 'paid',
         paymentId: paymentData.razorpay_payment_id,
-        paymentMethod: selectedPaymentMethod.name,
         status: 'active',
         createdAt: firestore.FieldValue.serverTimestamp(),
         updatedAt: firestore.FieldValue.serverTimestamp(),
@@ -365,7 +289,7 @@ const SubscriptionPlansScreen = () => {
         <Text style={styles.headerTitle}>Choose Subscription</Text>
         <View style={{ width: 24 }} />
       </View>
-      
+
       <ScrollView contentContainerStyle={styles.subscriptionContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Select Your Plan</Text>
@@ -378,9 +302,9 @@ const SubscriptionPlansScreen = () => {
           {['monthly', 'quarterly', 'halfYearly', 'yearly'].map((planKey) => {
             const planData = subscriptionData[planKey];
             const isSelected = selectedPlan?.period === planData.period;
-            
+
             return (
-              <TouchableOpacity 
+              <TouchableOpacity
                 key={planKey}
                 style={[
                   styles.planCard,
@@ -395,30 +319,30 @@ const SubscriptionPlansScreen = () => {
                     <Text style={styles.popularText}>MOST POPULAR</Text>
                   </View>
                 )}
-                
+
                 {isSelected && (
                   <View style={styles.selectedBadge}>
                     <Icon name="check-circle" size={20} color="#fff" />
                   </View>
                 )}
-                
+
                 <View style={styles.planHeader}>
                   <Text style={styles.planName}>{planData.period}</Text>
                   <Text style={styles.planDuration}>{planData.duration}</Text>
                 </View>
-                
+
                 <View style={styles.priceContainer}>
                   <Text style={styles.planPrice}>₹{planData.price.toLocaleString('en-IN')}</Text>
                   <Text style={styles.planPerFlat}>₹{planData.perFlat}/flat/month</Text>
                 </View>
-                
+
                 {planData.discount > 0 && (
                   <View style={styles.discountContainer}>
                     <Icon name="tag" size={14} color="#28a745" />
                     <Text style={styles.planDiscount}>Save {planData.discount}%</Text>
                   </View>
                 )}
-                
+
                 <View style={styles.planFeatures}>
                   <View style={styles.featureItem}>
                     <Icon name="check" size={16} color="#28a745" />
@@ -438,30 +362,11 @@ const SubscriptionPlansScreen = () => {
           })}
         </View>
 
-        {/* <View style={styles.costBreakdown}>
-          <Text style={styles.breakdownTitle}>💰 Cost Breakdown (Monthly)</Text>
-          <View style={styles.costItem}>
-            <Text style={styles.costLabel}>Firebase Services</Text>
-            <Text style={styles.costValue}>₹{subscriptionData.firebaseCosts.total.toFixed(0)}</Text>
-          </View>
-          <View style={styles.costItem}>
-            <Text style={styles.costLabel}>Payment Gateway</Text>
-            <Text style={styles.costValue}>₹{(subscriptionData.monthly.price * 0.02).toFixed(0)}</Text>
-          </View>
-          <View style={styles.costItem}>
-            <Text style={styles.costLabel}>GST</Text>
-            <Text style={styles.costValue}>₹{(subscriptionData.monthly.price * 0.02 * 0.18).toFixed(0)}</Text>
-          </View>
-          <View style={[styles.costItem, styles.totalCost]}>
-            <Text style={styles.totalLabel}>Total Monthly Cost</Text>
-            <Text style={styles.totalValue}>₹{subscriptionData.monthly.price.toLocaleString('en-IN')}</Text>
-          </View>
-        </View> */}
       </ScrollView>
 
       {selectedPlan && (
         <View style={styles.payButtonContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.payButton}
             onPress={initiatePayment}
             disabled={loading}
@@ -481,7 +386,6 @@ const SubscriptionPlansScreen = () => {
         </View>
       )}
 
-      {/* Enhanced Payment Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -489,18 +393,18 @@ const SubscriptionPlansScreen = () => {
         onRequestClose={() => setShowPaymentModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <Pressable 
+          <Pressable
             style={styles.modalBackground}
             onPress={() => setShowPaymentModal(false)}
           />
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Payment Method</Text>
+              <Text style={styles.modalTitle}>Confirm Payment</Text>
               <TouchableOpacity onPress={() => setShowPaymentModal(false)}>
                 <Icon name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
-            
+
             <View style={styles.modalContent}>
               <View style={styles.paymentSummary}>
                 <View style={styles.summaryRow}>
@@ -516,50 +420,21 @@ const SubscriptionPlansScreen = () => {
                   <Text style={styles.summaryValue}>{communityData.name}</Text>
                 </View>
               </View>
-              
-              <ScrollView style={styles.paymentMethodsContainer} showsVerticalScrollIndicator={false}>
-                {paymentMethods.map((method) => (
-                  <TouchableOpacity
-                    key={method.id}
-                    style={[
-                      styles.paymentMethodCard,
-                      selectedPaymentMethod?.id === method.id && styles.selectedPaymentMethod
-                    ]}
-                    onPress={() => handlePaymentMethodSelect(method)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.methodIcon, { backgroundColor: method.color + '20' }]}>
-                      <Icon name={method.icon} size={24} color={method.color} />
-                    </View>
-                    <View style={styles.methodInfo}>
-                      <Text style={styles.methodName}>{method.name}</Text>
-                      <Text style={styles.methodSubtitle}>{method.subtitle}</Text>
-                    </View>
-                    {selectedPaymentMethod?.id === method.id && (
-                      <Icon name="check-circle" size={20} color="#366732" />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
             </View>
-            
+
             <View style={styles.modalFooter}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => setShowPaymentModal(false)}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[
-                  styles.confirmButton,
-                  !selectedPaymentMethod && styles.disabledButton
-                ]}
+              <TouchableOpacity
+                style={styles.confirmButton}
                 onPress={processPayment}
-                disabled={!selectedPaymentMethod}
               >
                 <Text style={styles.confirmButtonText}>
-                  Pay ₹{selectedPlan?.price.toLocaleString('en-IN')}
+                  Pay Now ₹{selectedPlan?.price.toLocaleString('en-IN')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -812,133 +687,127 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
-    // Modal styles
-    modalOverlay: {
-        flex: 1,
-        justifyContent: 'flex-end',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-      },
-      modalBackground: {
-        flex: 1,
-      },
-      modalContainer: {
-        backgroundColor: '#fff',
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        maxHeight: '80%',
-        paddingBottom: 20,
-      },
-      modalHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 20,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-      },
-      modalTitle: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: '#1a1a1a',
-      },
-      modalContent: {
-        paddingHorizontal: 20,
-      },
-      paymentSummary: {
-        paddingVertical: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-        marginBottom: 16,
-      },
-      summaryRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 8,
-      },
-      summaryLabel: {
-        fontSize: 14,
-        color: '#666',
-        fontWeight: '500',
-      },
-      summaryValue: {
-        fontSize: 14,
-        color: '#1a1a1a',
-        fontWeight: '600',
-      },
-      paymentMethodsContainer: {
-        maxHeight: 300,
-      },
-      paymentMethodCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 16,
-        backgroundColor: '#fff',
-        borderRadius: 12,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: '#e8e8e8',
-      },
-      selectedPaymentMethod: {
-        borderColor: '#366732',
-        backgroundColor: '#36673210',
-      },
-      methodIcon: {
-        width: 48,
-        height: 48,
-        borderRadius: 12,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 16,
-      },
-      methodInfo: {
-        flex: 1,
-      },
-      methodName: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#1a1a1a',
-        marginBottom: 4,
-      },
-      methodSubtitle: {
-        fontSize: 12,
-        color: '#666',
-      },
-      modalFooter: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingTop: 16,
-      },
-      cancelButton: {
-        flex: 1,
-        padding: 16,
-        backgroundColor: '#f8f8f8',
-        borderRadius: 12,
-        alignItems: 'center',
-        marginRight: 10,
-      },
-      cancelButtonText: {
-        color: '#666',
-        fontSize: 16,
-        fontWeight: '600',
-      },
-      confirmButton: {
-        flex: 1,
-        padding: 16,
-        backgroundColor: '#366732',
-        borderRadius: 12,
-        alignItems: 'center',
-        marginLeft: 10,
-      },
-      disabledButton: {
-        opacity: 0.6,
-      },
-      confirmButtonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-      },
-    });
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalBackground: {
+    flex: 1,
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  modalContent: {
+    paddingHorizontal: 20,
+  },
+  paymentSummary: {
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    marginBottom: 16,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  summaryLabel: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  summaryValue: {
+    fontSize: 14,
+    color: '#1a1a1a',
+    fontWeight: '600',
+  },
+  paymentMethodsContainer: {
+    maxHeight: 300,
+  },
+  paymentMethodCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+  },
+  methodIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  methodInfo: {
+    flex: 1,
+  },
+  methodName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  methodSubtitle: {
+    fontSize: 12,
+    color: '#666',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  cancelButton: {
+    padding: 16,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confirmButton: {
+    padding: 16,
+    backgroundColor: '#366732',
+    borderRadius: 12,
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+  confirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
 
 
-    export default SubscriptionPlansScreen;
+export default SubscriptionPlansScreen;

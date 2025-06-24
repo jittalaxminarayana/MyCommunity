@@ -8,23 +8,21 @@ import {
     ActivityIndicator,
     Alert,
     Modal,
-    Image,
 } from 'react-native';
 import { firebase } from '@react-native-firebase/firestore';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { format } from 'date-fns';
-import { Picker } from '@react-native-picker/picker';
+import RazorpayCheckout from 'react-native-razorpay';
+import { RAZORPAY_KEY_ID } from '@env';
 
 const MaintenanceScreen = ({ navigation }) => {
     const userData = useSelector((state) => state.user.userData);
     const communityData = useSelector((state) => state.user.communityData);
-    console.log("userData",userData )
 
     // States
     const [loading, setLoading] = useState(true);
     const [maintenanceDues, setMaintenanceDues] = useState([]);
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('upi');
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [selectedDue, setSelectedDue] = useState(null);
     const [processingPayment, setProcessingPayment] = useState(false);
@@ -37,7 +35,7 @@ const MaintenanceScreen = ({ navigation }) => {
                     .doc(communityData.id)
                     .collection('maintenanceDues')
                     .where('apartmentId', '==', userData.apartmentId)
-                    .where('status', 'in', ['pending', 'overdue']); // Only fetch pending/overdue
+                    .where('status', 'in', ['pending', 'overdue']);
 
                 const unsubscribe = duesRef.onSnapshot((snapshot) => {
                     const dues = [];
@@ -46,20 +44,16 @@ const MaintenanceScreen = ({ navigation }) => {
                             id: doc.id,
                             ...doc.data(),
                             dueDate: doc.data().dueDate?.toDate() || new Date(),
-                            createdAt: doc.data().createdAt?.toDate() || new Date(),
                         });
                     });
                     dues.sort((a, b) => b.dueDate - a.dueDate);
                     setMaintenanceDues(dues);
                     setLoading(false);
-                }, (error) => {
-                    console.error("Error fetching maintenance dues:", error);
-                    setLoading(false);
                 });
 
                 return unsubscribe;
             } catch (error) {
-                console.error("Error setting up dues listener:", error);
+                console.error("Error fetching maintenance dues:", error);
                 setLoading(false);
             }
         };
@@ -67,54 +61,43 @@ const MaintenanceScreen = ({ navigation }) => {
         fetchMaintenanceDues();
     }, [communityData.id, userData.apartmentId]);
 
-    // Mark a due as overdue if past due date and still pending
-    useEffect(() => {
-        const markOverdueDues = async () => {
-            const today = new Date();
-            const overdueDues = maintenanceDues.filter(due => 
-                due.status === 'pending' && due.dueDate < today
-            );
-
-            for (const due of overdueDues) {
-                try {
-                    await firebase.firestore()
-                        .collection('communities')
-                        .doc(communityData.id)
-                        .collection('maintenanceDues')
-                        .doc(due.id)
-                        .update({
-                            status: 'overdue',
-                            lateFee: due.lateFee || 500 // Default late fee if not specified
-                        });
-                } catch (error) {
-                    console.error("Error updating overdue status:", error);
-                }
-            }
-        };
-
-        if (maintenanceDues.length > 0) {
-            markOverdueDues();
-        }
-    }, [maintenanceDues, communityData.id]);
-
-    // Handle payment initiation
     const handlePayNow = (due) => {
         setSelectedDue(due);
         setShowPaymentModal(true);
     };
 
-    // Process payment
     const processPayment = async () => {
-        if (!selectedDue) return;
+        if (!selectedDue || !RAZORPAY_KEY_ID) {
+            Alert.alert("Error", "Payment configuration error");
+            return;
+        }
 
-        const now = new Date();
-        const month = now.toLocaleString('default', { month: 'long' }); // e.g., "May"
-        const year = now.getFullYear(); // e.g., 2025
-      
         setProcessingPayment(true);
+        
+        const paymentAmount = selectedDue.status === 'overdue' 
+            ? selectedDue.amount + (selectedDue.lateFee || 500) 
+            : selectedDue.amount;
+
+        const options = {
+            description: `${selectedDue.month} Maintenance Payment`,
+            image: communityData?.profileImageUrl ? communityData.profileImageUrl: 'https://img.freepik.com/free-vector/user-circles-set_78370-4704.jpg',
+            currency: 'INR',
+            key: RAZORPAY_KEY_ID,
+            amount: paymentAmount * 100,
+            name: communityData.name,
+            prefill: {
+                email: userData.email,
+                contact: userData.phone,
+                name: userData.name
+            },
+            theme: { color: '#366732' }
+        };
+
         try {
-            // Create payment record
-            const paymentRef = await firebase.firestore()
+            const razorpayData = await RazorpayCheckout.open(options);
+            
+            // Save payment record
+            await firebase.firestore()
                 .collection('communities')
                 .doc(communityData.id)
                 .collection('paymentHistory')
@@ -123,20 +106,16 @@ const MaintenanceScreen = ({ navigation }) => {
                     userName: userData.name,
                     apartmentId: userData.apartmentId,
                     dueId: selectedDue.id,
-                    amount: selectedDue.status === 'overdue' 
-                        ? selectedDue.amount + (selectedDue.lateFee || 500) 
-                        : selectedDue.amount,
+                    amount: paymentAmount,
                     paymentDate: firebase.firestore.FieldValue.serverTimestamp(),
-                    paymentMode: selectedPaymentMethod,
+                    paymentMode: 'razorpay',
+                    transactionId: razorpayData.razorpay_payment_id,
+                    type: 'Monthly maintenance',
+                    status: 'Completed',
                     month: selectedDue.month,
-                    transactionId: `TXN${Math.floor(100000 + Math.random() * 900000)}`, // Mock transaction ID
-                    type:'Monthly maintenance',
-                    notes: `Paid via ${selectedPaymentMethod}`,
-                    status:'Completed',
-                    month: `${month} ${year}`,
                 });
 
-            // Update maintenance due status
+            // Update due status
             await firebase.firestore()
                 .collection('communities')
                 .doc(communityData.id)
@@ -144,19 +123,18 @@ const MaintenanceScreen = ({ navigation }) => {
                 .doc(selectedDue.id)
                 .update({
                     status: 'paid',
-                    paymentId: paymentRef.id
+                    paymentId: razorpayData.razorpay_payment_id
                 });
 
             Alert.alert(
                 "Payment Successful", 
-                `Your payment of ₹${selectedDue.status === 'overdue' 
-                    ? selectedDue.amount + (selectedDue.lateFee || 500) 
-                    : selectedDue.amount} has been processed successfully.`
+                `Your payment of ₹${paymentAmount.toLocaleString()} has been processed.`,
+                [{ text: 'OK', onPress: () => setShowPaymentModal(false) }]
             );
-            setShowPaymentModal(false);
         } catch (error) {
-            console.error("Error processing payment:", error);
-            Alert.alert("Payment Failed", "There was an error processing your payment. Please try again.");
+            if (error.code !== 2) { // Ignore user cancellation
+                Alert.alert("Payment Failed", error.description || "Payment could not be completed");
+            }
         } finally {
             setProcessingPayment(false);
         }
@@ -164,14 +142,10 @@ const MaintenanceScreen = ({ navigation }) => {
 
     const renderDueStatus = (status) => {
         switch(status) {
-            case 'pending':
-                return <Text style={styles.statusPending}>Pending</Text>;
-            case 'paid':
-                return <Text style={styles.statusPaid}>Paid</Text>;
-            case 'overdue':
-                return <Text style={styles.statusOverdue}>Overdue</Text>;
-            default:
-                return <Text style={styles.statusPending}>{status}</Text>;
+            case 'pending': return <Text style={styles.statusPending}>Pending</Text>;
+            case 'paid': return <Text style={styles.statusPaid}>Paid</Text>;
+            case 'overdue': return <Text style={styles.statusOverdue}>Overdue</Text>;
+            default: return <Text style={styles.statusPending}>{status}</Text>;
         }
     };
 
@@ -179,18 +153,14 @@ const MaintenanceScreen = ({ navigation }) => {
         return (
             <View style={styles.container}>
                 <View style={styles.header}>
-                    <TouchableOpacity
-                        style={styles.backButton}
-                        onPress={() => navigation.goBack()}
-                    >
+                    <TouchableOpacity onPress={() => navigation.goBack()}>
                         <Icon name="arrow-left" size={24} color="#fff" />
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>Maintenance Dues</Text>
-                    <View style={styles.headerRightSpace}></View>
+                    <View style={{ width: 24 }} />
                 </View>
                 <View style={styles.loaderContainer}>
                     <ActivityIndicator size="large" color="#366732" />
-                    <Text style={styles.loaderText}>Loading maintenance dues...</Text>
                 </View>
             </View>
         );
@@ -200,28 +170,15 @@ const MaintenanceScreen = ({ navigation }) => {
         return (
             <View style={styles.container}>
                 <View style={styles.header}>
-                    <TouchableOpacity
-                        style={styles.backButton}
-                        onPress={() => navigation.goBack()}
-                    >
+                    <TouchableOpacity onPress={() => navigation.goBack()}>
                         <Icon name="arrow-left" size={24} color="#fff" />
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>Maintenance Dues</Text>
-                    <View style={styles.headerRightSpace}></View>
+                    <View style={{ width: 24 }} />
                 </View>
                 <View style={styles.emptyContainer}>
                     <Icon name="check-circle-outline" size={80} color="#366732" />
-                    <Text style={styles.emptyText}>No pending maintenance dues</Text>
-                    <Text style={styles.emptySubText}>
-                        You're all caught up with payments!{'\n'}
-                        Check Payment History for receipts
-                    </Text>
-                    <TouchableOpacity 
-                        style={styles.historyButton}
-                        onPress={() => navigation.navigate('PaymentHistoryScreen')}
-                    >
-                        <Text style={styles.historyButtonText}>View Payment History</Text>
-                    </TouchableOpacity>
+                    <Text style={styles.emptyText}>No pending dues</Text>
                 </View>
             </View>
         );
@@ -230,96 +187,92 @@ const MaintenanceScreen = ({ navigation }) => {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <TouchableOpacity
-                    style={styles.backButton}
-                    onPress={() => navigation.goBack()}
-                >
+                <TouchableOpacity onPress={() => navigation.goBack()}>
                     <Icon name="arrow-left" size={24} color="#fff" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Maintenance Dues</Text>
-                <View style={styles.headerRightSpace}></View>
+                <View style={{ width: 24 }} />
             </View>
 
-                <ScrollView style={styles.contentContainer}>
-                    <Text style={styles.sectionTitle}>Your Maintenance Dues</Text>
-                    <Text style={styles.apartmentInfo}>
-                        Apartment: <Text style={styles.apartmentId}>{userData.apartmentId}</Text>
-                    </Text>
+            <ScrollView style={styles.contentContainer}>
+                <Text style={styles.sectionTitle}>Your Maintenance Dues</Text>
+                <Text style={styles.apartmentInfo}>
+                    Apartment: <Text style={styles.apartmentId}>{userData.apartmentId}</Text>
+                </Text>
 
-                    {maintenanceDues.map((due) => (
-                        <View key={due.id} style={styles.dueCard}>
-                            <View style={styles.dueHeader}>
-                                <Text style={styles.dueMonth}>{due.month}</Text>
-                                {renderDueStatus(due.status)}
+                {maintenanceDues.map((due) => (
+                    <View key={due.id} style={styles.dueCard}>
+                        <View style={styles.dueHeader}>
+                            <Text style={styles.dueMonth}>{due.month}</Text>
+                            {renderDueStatus(due.status)}
+                        </View>
+                        
+                        <View style={styles.dueInfo}>
+                            <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>Amount:</Text>
+                                <Text style={styles.infoValue}>₹{due.amount.toLocaleString()}</Text>
                             </View>
                             
-                            <View style={styles.dueInfo}>
-                                <View style={styles.infoRow}>
-                                    <Text style={styles.infoLabel}>Amount:</Text>
-                                    <Text style={styles.infoValue}>₹{due.amount.toLocaleString()}</Text>
-                                </View>
-                                
-                                {due.status === 'overdue' && (
+                            {due.status === 'overdue' && (
+                                <>
                                     <View style={styles.infoRow}>
                                         <Text style={styles.infoLabel}>Late Fee:</Text>
                                         <Text style={styles.infoValue}>₹{(due.lateFee || 500).toLocaleString()}</Text>
                                     </View>
-                                )}
-                                
-                                {due.status === 'overdue' && (
                                     <View style={styles.infoRow}>
                                         <Text style={styles.infoLabel}>Total Due:</Text>
                                         <Text style={styles.infoValueTotal}>
                                             ₹{(due.amount + (due.lateFee || 500)).toLocaleString()}
                                         </Text>
                                     </View>
-                                )}
-                                
-                                <View style={styles.infoRow}>
-                                    <Text style={styles.infoLabel}>Due Date:</Text>
-                                    <Text style={styles.infoValue}>
-                                        {format(due.dueDate, 'MMM dd, yyyy')}
-                                    </Text>
-                                </View>
-                                
-                                {due.notes && (
-                                    <View style={styles.infoRow}>
-                                        <Text style={styles.infoLabel}>Note:</Text>
-                                        <Text style={styles.infoValue} numberOfLines={0}>{due.notes}</Text>
-                                    </View>
-                                )}
+                                </>
+                            )}
+                            
+                            <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>Due Date:</Text>
+                                <Text style={styles.infoValue}>
+                                    {format(due.dueDate, 'MMM dd, yyyy')}
+                                </Text>
                             </View>
                             
-                            {(due.status === 'pending' || due.status === 'overdue') && (
-                                <TouchableOpacity 
-                                    style={styles.payButton}
-                                    onPress={() => handlePayNow(due)}
-                                >
-                                    <Icon name="cash-multiple" size={20} color="#fff" />
-                                    <Text style={styles.payButtonText}>Pay Now</Text>
-                                </TouchableOpacity>
+                            {/* Restored Notes Section */}
+                            {due.notes && (
+                                <View style={styles.infoRow}>
+                                    <Text style={styles.infoLabel}>Note:</Text>
+                                    <Text style={styles.infoValue}>{due.notes}</Text>
+                                </View>
                             )}
                         </View>
-                    ))}
-                </ScrollView>
-        
-            {/* Payment Modal */}
+                        
+                        {(due.status === 'pending' || due.status === 'overdue') && (
+                            <TouchableOpacity 
+                                style={styles.payButton}
+                                onPress={() => handlePayNow(due)}
+                            >
+                                <Icon name="cash-multiple" size={20} color="#fff" />
+                                <Text style={styles.payButtonText}>Pay Now</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                ))}
+            </ScrollView>
+
+            {/* Simplified Payment Confirmation Modal */}
             <Modal
                 visible={showPaymentModal}
                 transparent={true}
                 animationType="slide"
-                onRequestClose={() => setShowPaymentModal(false)}
+                onRequestClose={() => !processingPayment && setShowPaymentModal(false)}
             >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Payment Details</Text>
-                            <TouchableOpacity 
-                                onPress={() => setShowPaymentModal(false)}
-                                disabled={processingPayment}
-                            >
-                                <Icon name="close" size={24} color="#333" />
-                            </TouchableOpacity>
+                            <Text style={styles.modalTitle}>Confirm Payment</Text>
+                            {!processingPayment && (
+                                <TouchableOpacity onPress={() => setShowPaymentModal(false)}>
+                                    <Icon name="close" size={24} color="#333" />
+                                </TouchableOpacity>
+                            )}
                         </View>
 
                         {selectedDue && (
@@ -346,48 +299,7 @@ const MaintenanceScreen = ({ navigation }) => {
                                             : selectedDue.amount).toLocaleString()}
                                     </Text>
                                 </View>
-                                
-                                <View style={styles.paymentMethodContainer}>
-                                    <Text style={styles.paymentMethodLabel}>Select Payment Method:</Text>
-                                    <View style={styles.pickerContainer}>
-                                        <Picker
-                                            selectedValue={selectedPaymentMethod}
-                                            onValueChange={(itemValue) => setSelectedPaymentMethod(itemValue)}
-                                            style={styles.picker}
-                                            enabled={!processingPayment}
-                                        >
-                                            <Picker.Item label="UPI" value="upi" />
-                                            <Picker.Item label="Google Pay" value="google_pay" />
-                                            <Picker.Item label="PhonePe" value="phonepe" />
-                                            <Picker.Item label="Paytm" value="paytm" />
-                                            <Picker.Item label="Net Banking" value="netbanking" />
-                                        </Picker>
-                                    </View>
-                                </View>
 
-                                <View style={styles.paymentIcons}>
-                                    <View style={[styles.paymentIconBox, 
-                                        selectedPaymentMethod === 'upi' && styles.selectedPaymentMethod]}>
-                                        <Icon name="qrcode-scan" size={32} color="#366732" />
-                                        <Text style={styles.paymentIconText}>UPI</Text>
-                                    </View>
-                                    <View style={[styles.paymentIconBox, 
-                                        selectedPaymentMethod === 'google_pay' && styles.selectedPaymentMethod]}>
-                                        <Icon name="google" size={32} color="#4285F4" />
-                                        <Text style={styles.paymentIconText}>GPay</Text>
-                                    </View>
-                                    <View style={[styles.paymentIconBox, 
-                                        selectedPaymentMethod === 'phonepe' && styles.selectedPaymentMethod]}>
-                                        <Icon name="cellphone" size={32} color="#5F259F" />
-                                        <Text style={styles.paymentIconText}>PhonePe</Text>
-                                    </View>
-                                    <View style={[styles.paymentIconBox, 
-                                        selectedPaymentMethod === 'paytm' && styles.selectedPaymentMethod]}>
-                                        <Icon name="wallet" size={32} color="#00BAF2" />
-                                        <Text style={styles.paymentIconText}>Paytm</Text>
-                                    </View>
-                                </View>
-                                
                                 <TouchableOpacity 
                                     style={styles.proceedButton}
                                     onPress={processPayment}
@@ -396,14 +308,7 @@ const MaintenanceScreen = ({ navigation }) => {
                                     {processingPayment ? (
                                         <ActivityIndicator size="small" color="#fff" />
                                     ) : (
-                                        <>
-                                            <Icon name="check-circle" size={20} color="#fff" />
-                                            <Text style={styles.proceedButtonText}>
-                                                Pay ₹{(selectedDue.status === 'overdue' 
-                                                    ? selectedDue.amount + (selectedDue.lateFee || 500) 
-                                                    : selectedDue.amount).toLocaleString()}
-                                            </Text>
-                                        </>
+                                        <Text style={styles.proceedButtonText}>Proceed to Payment</Text>
                                     )}
                                 </TouchableOpacity>
                             </View>

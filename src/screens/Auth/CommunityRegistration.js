@@ -98,6 +98,7 @@ const CommunityRegistration = () => {
           <TextInput
             style={styles.input}
             placeholder="Green Valley Community"
+            placeholderTextColor={'#CCCCCC'}
             value={formData.name}
             onChangeText={(text) => handleInputChange('name', text)}
           />
@@ -108,6 +109,7 @@ const CommunityRegistration = () => {
           <TextInput
             style={styles.input}
             placeholder="123 Green St, City, State"
+            placeholderTextColor={'#CCCCCC'}
             value={formData.address}
             onChangeText={(text) => handleInputChange('address', text)}
             multiline
@@ -120,6 +122,7 @@ const CommunityRegistration = () => {
           <TextInput
             style={styles.input}
             placeholder="admin@community.com"
+            placeholderTextColor={'#CCCCCC'}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -133,6 +136,7 @@ const CommunityRegistration = () => {
           <TextInput
             style={styles.input}
             placeholder="9876543210"
+            placeholderTextColor={'#CCCCCC'}
             keyboardType="phone-pad"
             maxLength={10}
             value={formData.contactPhone}
@@ -145,6 +149,7 @@ const CommunityRegistration = () => {
           <TextInput
             style={styles.input}
             placeholder="150"
+            placeholderTextColor={'#CCCCCC'}
             keyboardType="numeric"
             value={formData.totalResidents}
             onChangeText={(text) => handleInputChange('totalResidents', text)}
@@ -156,6 +161,7 @@ const CommunityRegistration = () => {
           <TextInput
             style={styles.input}
             placeholder="2000"
+            placeholderTextColor={'#CCCCCC'}
             keyboardType="numeric"
             value={formData.monthlyMaintenanceAmount}
             onChangeText={(text) => handleInputChange('monthlyMaintenanceAmount', text)}
